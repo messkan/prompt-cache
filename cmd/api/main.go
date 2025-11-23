@@ -1,44 +1,140 @@
 package main
 
 import (
-	"context"
+	"bytes"
+	"encoding/json"
+	"io"
 	"log"
+	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
-	"github.com/docker/docker/api/server"
-	"honnef.co/go/tools/config"
+	"github.com/gin-gonic/gin"
+	"github.com/messkan/PromptCache/internal/cache"
+	"github.com/messkan/PromptCache/internal/semantic"
+	"github.com/messkan/PromptCache/internal/storage"
 )
 
+type ChatCompletionRequest struct {
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+}
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 func main() {
-	// Load configuration (env vars, defaults…)
-	cfg := config.Load()
-
-	// Initialize the HTTP server (Gin, middleware, routes…)
-	srv := server.New(cfg)
-
-	// Run server in background goroutine
-	go func() {
-		log.Printf("🚀 Server starting on %s", cfg.Address())
-		if err := srv.Start(); err != nil {
-			log.Fatalf("❌ Server error: %v", err)
-		}
-	}()
-
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Println("🛑 Shutting down server...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := srv.Stop(ctx); err != nil {
-		log.Fatalf("❌ Shutdown failed: %v", err)
+	// Initialize Storage
+	store, err := storage.NewBadgerStore("./badger_data")
+	if err != nil {
+		log.Fatalf("Failed to initialize BadgerDB: %v", err)
 	}
+	defer store.Close()
 
-	log.Println("✅ Server stopped cleanly")
+	// Initialize Semantic Engine
+	openaiProvider := semantic.NewOpenAIProvider()
+	semanticEngine := semantic.NewSemanticEngine(openaiProvider, store, 0.88) // 0.88 threshold
+
+	// Initialize Cache
+	c := cache.NewCache(store)
+
+	r := gin.Default()
+
+	r.POST("/v1/chat/completions", func(cGin *gin.Context) {
+		var req ChatCompletionRequest
+		// We need to read the body but also keep it for forwarding
+		bodyBytes, err := io.ReadAll(cGin.Request.Body)
+		if err != nil {
+			cGin.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+			return
+		}
+		// Restore body for binding
+		cGin.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		if err := json.Unmarshal(bodyBytes, &req); err != nil {
+			cGin.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+			return
+		}
+
+		// Extract prompt (last user message)
+		prompt := ""
+		for i := len(req.Messages) - 1; i >= 0; i-- {
+			if req.Messages[i].Role == "user" {
+				prompt = req.Messages[i].Content
+				break
+			}
+		}
+
+		if prompt == "" {
+			cGin.JSON(http.StatusBadRequest, gin.H{"error": "No user prompt found"})
+			return
+		}
+
+		ctx := cGin.Request.Context()
+
+		// 1. Check Semantic Cache
+		similarKey, score, err := semanticEngine.FindSimilar(ctx, prompt)
+		if err != nil {
+			log.Printf("Semantic search error: %v", err)
+		}
+
+		if similarKey != "" {
+			log.Printf("🔥 Cache HIT! Score: %f, Key: %s", score, similarKey)
+			cachedResp, found, err := c.Get(ctx, similarKey)
+			if err == nil && found {
+				cGin.Data(http.StatusOK, "application/json", cachedResp)
+				return
+			}
+		}
+
+		log.Println("💨 Cache MISS. Forwarding to OpenAI...")
+
+		// 2. Forward to OpenAI
+		apiKey := os.Getenv("OPENAI_API_KEY")
+		openAIReq, _ := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(bodyBytes))
+		openAIReq.Header.Set("Content-Type", "application/json")
+		openAIReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+		client := &http.Client{}
+		resp, err := client.Do(openAIReq)
+		if err != nil {
+			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to call OpenAI"})
+			return
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read OpenAI response"})
+			return
+		}
+
+		// 3. Cache Response & Embedding
+		if resp.StatusCode == http.StatusOK {
+			key := cache.GenerateKey(prompt)
+
+			// Save Response
+			if err := c.Set(ctx, key, respBody, 24*time.Hour); err != nil {
+				log.Printf("Failed to cache response: %v", err)
+			}
+
+			// Save Embedding
+			embedding, err := openaiProvider.Embed(ctx, prompt)
+			if err == nil {
+				embBytes := semantic.Float32ToBytes(embedding)
+				if err := store.Set(ctx, "emb:"+key, embBytes); err != nil {
+					log.Printf("Failed to save embedding: %v", err)
+				}
+			} else {
+				log.Printf("Failed to generate embedding: %v", err)
+			}
+		}
+
+		cGin.Data(resp.StatusCode, "application/json", respBody)
+	})
+
+	log.Println("🚀 PromptCache Server running on :8080")
+	r.Run(":8080")
 }

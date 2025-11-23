@@ -30,3 +30,13 @@ func BytesToFloat32(data []byte) []float32 {
 	}
 	return res
 }
+
+func Float32ToBytes(data []float32) []byte {
+	size := len(data) * 4
+	res := make([]byte, size)
+	for i, v := range data {
+		bits := math.Float32bits(v)
+		binary.LittleEndian.PutUint32(res[i*4:], bits)
+	}
+	return res
+}
