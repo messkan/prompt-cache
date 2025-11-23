@@ -69,6 +69,19 @@ func (s *BadgerStore) GetAllEmbeddings(ctx context.Context) (map[string][]byte, 
 	return results, err
 }
 
+func (s *BadgerStore) GetPrompt(ctx context.Context, key string) (string, error) {
+	var valCopy []byte
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("prompt:" + key))
+		if err != nil {
+			return err
+		}
+		valCopy, err = item.ValueCopy(nil)
+		return err
+	})
+	return string(valCopy), err
+}
+
 func (s *BadgerStore) Close() {
 	s.db.Close()
 }

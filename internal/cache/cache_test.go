@@ -35,6 +35,14 @@ func (m *MockStorage) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+func (m *MockStorage) GetAllEmbeddings(ctx context.Context) (map[string][]byte, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) GetPrompt(ctx context.Context, key string) (string, error) {
+	return "", nil
+}
+
 func (m *MockStorage) Close() {}
 
 func TestCache_SetAndGet(t *testing.T) {

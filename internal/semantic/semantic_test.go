@@ -23,6 +23,24 @@ func (m *MockStorage) GetAllEmbeddings(ctx context.Context) (map[string][]byte, 
 	return m.embeddings, nil
 }
 
+func (m *MockStorage) GetPrompt(ctx context.Context, key string) (string, error) {
+	return "original prompt", nil
+}
+
+func (m *MockStorage) Set(ctx context.Context, key string, value []byte) error { return nil }
+func (m *MockStorage) Get(ctx context.Context, key string) ([]byte, error)     { return nil, nil }
+func (m *MockStorage) Delete(ctx context.Context, key string) error            { return nil }
+func (m *MockStorage) Close()                                                  {}
+
+// MockVerifier implements Verifier
+type MockVerifier struct {
+	match bool
+}
+
+func (m *MockVerifier) CheckSimilarity(ctx context.Context, prompt1, prompt2 string) (bool, error) {
+	return m.match, nil
+}
+
 func TestFindSimilar(t *testing.T) {
 	// Setup
 	queryVec := []float32{1, 0, 0}
@@ -33,23 +51,25 @@ func TestFindSimilar(t *testing.T) {
 
 	store := &MockStorage{
 		embeddings: map[string][]byte{
-			"match": Float32ToBytes(matchVec),
-			"diff":  Float32ToBytes(diffVec),
+			"emb:match": Float32ToBytes(matchVec),
+			"emb:diff":  Float32ToBytes(diffVec),
 		},
 	}
 
-	engine := NewSemanticEngine(provider, store, 0.9) // High threshold
+	verifier := &MockVerifier{match: true}
 
-	// Test Match
+	engine := NewSemanticEngine(provider, store, verifier, 0.95, 0.80)
+
+	// Test Match (High Confidence)
 	key, score, err := engine.FindSimilar(context.Background(), "query")
 	if err != nil {
 		t.Fatalf("FindSimilar failed: %v", err)
 	}
 
-	if key != "match" {
-		t.Errorf("Expected key 'match', got '%s'", key)
+	if key != "emb:match" {
+		t.Errorf("Expected key 'emb:match', got '%s'", key)
 	}
-	if score < 0.9 {
+	if score < 0.95 {
 		t.Errorf("Expected high score, got %f", score)
 	}
 }
@@ -63,11 +83,13 @@ func TestFindSimilar_NoMatch(t *testing.T) {
 
 	store := &MockStorage{
 		embeddings: map[string][]byte{
-			"diff": Float32ToBytes(diffVec),
+			"emb:diff": Float32ToBytes(diffVec),
 		},
 	}
 
-	engine := NewSemanticEngine(provider, store, 0.9)
+	verifier := &MockVerifier{match: false}
+
+	engine := NewSemanticEngine(provider, store, verifier, 0.95, 0.80)
 
 	// Test No Match
 	key, _, err := engine.FindSimilar(context.Background(), "query")

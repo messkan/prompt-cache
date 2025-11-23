@@ -36,7 +36,7 @@ func main() {
 
 	// Initialize Semantic Engine
 	openaiProvider := semantic.NewOpenAIProvider()
-	semanticEngine := semantic.NewSemanticEngine(openaiProvider, store, 0.80) // 0.80 threshold
+	semanticEngine := semantic.NewSemanticEngine(openaiProvider, store, openaiProvider, 0.95, 0.80)
 
 	// Initialize Cache
 	c := cache.NewCache(store)
@@ -103,14 +103,16 @@ func main() {
 		client := &http.Client{}
 		resp, err := client.Do(openAIReq)
 		if err != nil {
-			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to call OpenAI"})
+			log.Printf("Failed to call OpenAI: %v", err)
+			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to call OpenAI: " + err.Error()})
 			return
 		}
 		defer resp.Body.Close()
 
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read OpenAI response"})
+			log.Printf("Failed to read OpenAI response: %v", err)
+			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read OpenAI response: " + err.Error()})
 			return
 		}
 
@@ -121,6 +123,11 @@ func main() {
 			// Save Response
 			if err := c.Set(ctx, key, respBody, 24*time.Hour); err != nil {
 				log.Printf("Failed to cache response: %v", err)
+			}
+
+			// Save Prompt for Verification
+			if err := store.Set(ctx, "prompt:"+key, []byte(prompt)); err != nil {
+				log.Printf("Failed to save prompt: %v", err)
 			}
 
 			// Save Embedding

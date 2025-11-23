@@ -79,3 +79,68 @@ func (p *OpenAIProvider) Embed(ctx context.Context, text string) ([]float32, err
 
 	return res, nil
 }
+
+type VerificationRequest struct {
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+}
+
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type VerificationResponse struct {
+	Choices []struct {
+		Message Message `json:"message"`
+	} `json:"choices"`
+}
+
+func (p *OpenAIProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 string) (bool, error) {
+	systemPrompt := "You are a semantic judge. Determine if the two user prompts have the exact same intent and meaning. Answer only with 'YES' or 'NO'."
+	userPrompt := fmt.Sprintf("Prompt 1: %s\nPrompt 2: %s", prompt1, prompt2)
+
+	reqBody := VerificationRequest{
+		Model: "gpt-4o-mini",
+		Messages: []Message{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return false, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("OpenAI API error: %s", string(body))
+	}
+
+	var verResp VerificationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&verResp); err != nil {
+		return false, err
+	}
+
+	if len(verResp.Choices) == 0 {
+		return false, fmt.Errorf("no choices returned")
+	}
+
+	content := verResp.Choices[0].Message.Content
+	return content == "YES", nil
+}
