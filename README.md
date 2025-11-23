@@ -37,7 +37,7 @@ It uses **semantic understanding** to detect when a new prompt has *the same int
 | Metric                      | Without Cache | With PromptCache | Benefit      |
 | --------------------------- | ------------- | ---------------- | ------------ |
 | **Cost per 1,000 Requests** | ≈ $30         | **≈ $6**         | Lower cost   |
-| **Average Latency**         | ~1.5s         | **<10ms**        | Faster UX    |
+| **Avg Latency**         | ~1.5s         | **~300ms**       | Faster UX    |
 | **Throughput**              | API-limited   | **Unlimited**    | Better scale |
 
 Numbers vary per model, but the pattern holds across real workloads:
