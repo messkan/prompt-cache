@@ -43,6 +43,8 @@ It uses **semantic understanding** to detect when a new prompt has *the same int
 Numbers vary per model, but the pattern holds across real workloads:
 **semantic caching dramatically reduces cost and latency**.
 
+\* Results may vary depending on model, usage patterns, and configuration.
+
 ---
 
 ## 🧠 Smart Semantic Matching (Safer by Design)
