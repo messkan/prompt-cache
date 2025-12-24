@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/messkan/PromptCache/internal/cache"
+	"github.com/messkan/PromptCache/internal/metrics"
 	"github.com/messkan/PromptCache/internal/semantic"
 	"github.com/messkan/PromptCache/internal/storage"
 )
@@ -40,6 +41,9 @@ func main() {
 
 	// Initialize Cache
 	c := cache.NewCache(store)
+
+	// Initialize Metrics
+	m := metrics.NewMetrics(store)
 
 	r := gin.Default()
 
@@ -87,12 +91,14 @@ func main() {
 			actualKey := strings.TrimPrefix(similarKey, "emb:")
 			cachedResp, found, err := c.Get(ctx, actualKey)
 			if err == nil && found {
+				m.IncrementCacheHits()
 				cGin.Data(http.StatusOK, "application/json", cachedResp)
 				return
 			}
 		}
 
 		log.Println("💨 Cache MISS. Forwarding to OpenAI...")
+		m.IncrementCacheMisses()
 
 		// 2. Forward to OpenAI
 		apiKey := os.Getenv("OPENAI_API_KEY")
@@ -143,6 +149,17 @@ func main() {
 		}
 
 		cGin.Data(resp.StatusCode, "application/json", respBody)
+	})
+
+	r.GET("/metrics", func(cGin *gin.Context) {
+		ctx := cGin.Request.Context()
+		metricsData, err := m.GetMetrics(ctx)
+		if err != nil {
+			log.Printf("Failed to get metrics: %v", err)
+			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get metrics"})
+			return
+		}
+		cGin.JSON(http.StatusOK, metricsData)
 	})
 
 	log.Println("🚀 PromptCache Server running on :8080")

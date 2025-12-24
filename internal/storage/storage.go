@@ -10,5 +10,6 @@ type Storage interface {
 	Delete(ctx context.Context, key string) error
 	GetAllEmbeddings(ctx context.Context) (map[string][]byte, error)
 	GetPrompt(ctx context.Context, key string) (string, error)
+	CountEmbeddings(ctx context.Context) (int64, error)
 	Close()
 }
