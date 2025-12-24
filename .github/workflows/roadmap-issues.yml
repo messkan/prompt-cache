@@ -1,0 +1,38 @@
+name: Create roadmap issues
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 9 * * 1' # weekly on Monday at 09:00 UTC — change as needed
+  push:
+    paths:
+      - 'roadmap.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
+
+      - name: Build roadmap-issues
+        working-directory: ./scripts/roadmap-issues
+        run: |
+          go env
+          go build -o /tmp/roadmap-issues ./...
+
+      - name: Run roadmap-issues
+        # GITHUB_TOKEN is provided by Actions automatically
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_ASSIGNEE: "messkan" # change if you want different default assignee
+        run: /tmp/roadmap-issues
