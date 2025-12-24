@@ -43,6 +43,16 @@ func (m *MockStorage) GetPrompt(ctx context.Context, key string) (string, error)
 	return "", nil
 }
 
+func (m *MockStorage) CountEmbeddings(ctx context.Context) (int64, error) {
+	var count int64
+	for k := range m.data {
+		if len(k) >= 4 && k[:4] == "emb:" {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (m *MockStorage) Close() {}
 
 func TestCache_SetAndGet(t *testing.T) {
