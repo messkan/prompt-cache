@@ -1,0 +1,17 @@
+- title: "Add semantic cache metrics endpoint"
+  body: |
+    Add a /metrics endpoint that reports cache hit/miss, eviction rate, and stored vectors count.
+  labels:
+    - roadmap
+    - telemetry
+  assignees:
+    - messkan
+
+- title: "Support multi-tenant API keys"
+  body: |
+    Allow creating per-tenant API keys with quota enforcement.
+  labels:
+    - roadmap
+    - backend
+  assignees:
+    - messkan

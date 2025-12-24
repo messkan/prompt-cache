@@ -8,6 +8,9 @@
 *.out
 *.o
 
+# Main binary
+/prompt-cache
+
 # Go build cache, modules, etc.
 bin/
 build/
