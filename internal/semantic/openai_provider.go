@@ -11,14 +11,20 @@ import (
 )
 
 type OpenAIProvider struct {
-	apiKey string
-	client *http.Client
+	apiKey              string
+	client              *http.Client
+	verificationModel   string
 }
 
 func NewOpenAIProvider() *OpenAIProvider {
+	return NewOpenAIProviderWithModel("gpt-4o-mini")
+}
+
+func NewOpenAIProviderWithModel(verificationModel string) *OpenAIProvider {
 	return &OpenAIProvider{
-		apiKey: os.Getenv("OPENAI_API_KEY"),
-		client: &http.Client{},
+		apiKey:            os.Getenv("OPENAI_API_KEY"),
+		client:            &http.Client{},
+		verificationModel: verificationModel,
 	}
 }
 
@@ -101,7 +107,7 @@ func (p *OpenAIProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 s
 	userPrompt := fmt.Sprintf("Prompt 1: %s\nPrompt 2: %s", prompt1, prompt2)
 
 	reqBody := VerificationRequest{
-		Model: "gpt-4o-mini",
+		Model: p.verificationModel,
 		Messages: []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},

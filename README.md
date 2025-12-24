@@ -109,6 +109,44 @@ No code changes. Just point your client to PromptCache.
 
 ---
 
+## ⚙️ Configuration
+
+PromptCache can be configured using environment variables to fine-tune its behavior.
+
+### Environment Variables
+
+| Variable | Description | Default Value | Example |
+|----------|-------------|---------------|---------|
+| `OPENAI_API_KEY` | Your OpenAI API key (required) | - | `sk-...` |
+| `GRAY_ZONE_FALLBACK_MODEL` | Model used for semantic verification in the "gray zone" | `gpt-4o-mini` | `gpt-4`, `gpt-4o-mini` |
+| `HIGH_SIMILARITY_THRESHOLD` | Threshold above which cache hit is guaranteed | `0.70` | `0.80`, `0.90` |
+| `LOW_SIMILARITY_THRESHOLD` | Threshold below which cache miss is guaranteed | `0.30` | `0.20`, `0.40` |
+
+### Example Usage
+
+```bash
+# Run with custom configuration
+export OPENAI_API_KEY=your_key_here
+export GRAY_ZONE_FALLBACK_MODEL=gpt-4
+export HIGH_SIMILARITY_THRESHOLD=0.98
+export LOW_SIMILARITY_THRESHOLD=0.85
+./prompt-cache
+```
+
+**Understanding Thresholds:**
+
+- **High Threshold (0.70 default)**: Similarity scores **above** this value result in an immediate cache hit without verification.
+- **Low Threshold (0.30 default)**: Similarity scores **below** this value result in an immediate cache miss.
+- **Gray Zone (between thresholds)**: Scores in this range trigger semantic verification using the `GRAY_ZONE_FALLBACK_MODEL` to ensure intent matches.
+
+**Tuning Tips:**
+
+- **Higher thresholds** (e.g., 0.98/0.90): More conservative, fewer false positives, but may miss valid cache hits.
+- **Lower thresholds** (e.g., 0.90/0.75): More aggressive caching, better hit rates, but slightly higher risk of semantic mismatch.
+- **Fallback model**: Use `gpt-4o-mini` (default) for cost-effectiveness, or `gpt-4` for higher accuracy in verification.
+
+---
+
 ## 🏗 Architecture Overview
 
 Built for speed, safety, and reliability:

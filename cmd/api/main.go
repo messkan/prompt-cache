@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/messkan/PromptCache/internal/cache"
+	"github.com/messkan/PromptCache/internal/config"
 	"github.com/messkan/PromptCache/internal/metrics"
 	"github.com/messkan/PromptCache/internal/semantic"
 	"github.com/messkan/PromptCache/internal/storage"
@@ -28,6 +29,13 @@ type Message struct {
 }
 
 func main() {
+	// Load Configuration
+	cfg := config.Load()
+	log.Printf("🔧 Configuration loaded:")
+	log.Printf("   Gray Zone Fallback Model: %s", cfg.GrayZoneFallbackModel)
+	log.Printf("   High Similarity Threshold: %.2f", cfg.HighSimilarityThreshold)
+	log.Printf("   Low Similarity Threshold: %.2f", cfg.LowSimilarityThreshold)
+
 	// Initialize Storage
 	store, err := storage.NewBadgerStore("./badger_data")
 	if err != nil {
@@ -35,9 +43,9 @@ func main() {
 	}
 	defer store.Close()
 
-	// Initialize Semantic Engine
-	openaiProvider := semantic.NewOpenAIProvider()
-	semanticEngine := semantic.NewSemanticEngine(openaiProvider, store, openaiProvider, 0.95, 0.80)
+	// Initialize Semantic Engine with configurable thresholds and model
+	openaiProvider := semantic.NewOpenAIProviderWithModel(cfg.GrayZoneFallbackModel)
+	semanticEngine := semantic.NewSemanticEngine(openaiProvider, store, openaiProvider, cfg.HighSimilarityThreshold, cfg.LowSimilarityThreshold)
 
 	// Initialize Cache
 	c := cache.NewCache(store)
