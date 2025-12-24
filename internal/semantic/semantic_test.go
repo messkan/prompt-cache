@@ -138,7 +138,10 @@ func TestFindSimilar_CustomThresholds(t *testing.T) {
 func TestFindSimilar_GrayZone(t *testing.T) {
 	// Setup - test gray zone behavior
 	queryVec := []float32{1, 0, 0}
-	grayVec := []float32{0.9, 0.436, 0} // Normalized vector with ~0.9 similarity
+	// This vector is chosen to have ~0.9 cosine similarity with queryVec
+	// Cosine similarity = dot(queryVec, grayVec) / (||queryVec|| * ||grayVec||)
+	// For normalized vectors: dot([1,0,0], [0.9, 0.436, 0]) ≈ 0.9
+	grayVec := []float32{0.9, 0.436, 0}
 
 	provider := &MockProvider{embedding: queryVec}
 
@@ -167,7 +170,8 @@ func TestFindSimilar_GrayZone(t *testing.T) {
 	}
 
 	// Test gray zone with verifier no match - use a score that's definitely in the gray zone
-	grayVec2 := []float32{0.85, 0.527, 0} // Should give ~0.85 similarity
+	// This vector is chosen to have ~0.85 cosine similarity with queryVec
+	grayVec2 := []float32{0.85, 0.527, 0}
 	store2 := &MockStorage{
 		embeddings: map[string][]byte{
 			"emb:gray2": Float32ToBytes(grayVec2),
