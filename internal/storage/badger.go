@@ -85,3 +85,20 @@ func (s *BadgerStore) GetPrompt(ctx context.Context, key string) (string, error)
 func (s *BadgerStore) Close() {
 	s.db.Close()
 }
+
+func (s *BadgerStore) CountEmbeddings(ctx context.Context) (int64, error) {
+	var count int64
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false // Only need keys for counting
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		prefix := []byte("emb:")
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			count++
+		}
+		return nil
+	})
+	return count, err
+}
