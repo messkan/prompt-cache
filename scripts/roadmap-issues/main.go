@@ -124,7 +124,7 @@ func main() {
 			}
 			log.Printf("Failed to create issue %q (attempt with assignees %v): %v (status %d)", title, assignees, err, statusCode)
 			if len(assignees) > 0 {
-				issueRequest.Assignees = &[]string{}
+				issueRequest.Assignees = nil
 				created2, resp2, err2 := client.Issues.Create(ctx, owner, repo, issueRequest)
 				if err2 != nil {
 					statusCode2 := 0
