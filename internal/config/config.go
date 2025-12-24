@@ -19,17 +19,31 @@ type Config struct {
 
 // Load reads configuration from environment variables with sensible defaults
 func Load() *Config {
+	highThreshold := float32(0.70)
+	if value := os.Getenv("HIGH_SIMILARITY_THRESHOLD"); value != "" {
+		if parsed, err := strconv.ParseFloat(value, 32); err == nil {
+			highThreshold = float32(parsed)
+		}
+	}
+	
+	lowThreshold := float32(0.30)
+	if value := os.Getenv("LOW_SIMILARITY_THRESHOLD"); value != "" {
+		if parsed, err := strconv.ParseFloat(value, 32); err == nil {
+			lowThreshold = float32(parsed)
+		}
+	}
+	
 	cfg := &Config{
 		GrayZoneFallbackModel:   getEnv("GRAY_ZONE_FALLBACK_MODEL", "gpt-4o-mini"),
-		HighSimilarityThreshold: getEnvFloat32("HIGH_SIMILARITY_THRESHOLD", 0.95),
-		LowSimilarityThreshold:  getEnvFloat32("LOW_SIMILARITY_THRESHOLD", 0.80),
+		HighSimilarityThreshold: highThreshold,
+		LowSimilarityThreshold:  lowThreshold,
 	}
 	
 	// Validate thresholds
 	if cfg.HighSimilarityThreshold <= cfg.LowSimilarityThreshold {
 		// If invalid, reset to sensible defaults
-		cfg.HighSimilarityThreshold = 0.95
-		cfg.LowSimilarityThreshold = 0.80
+		cfg.HighSimilarityThreshold = 0.70
+		cfg.LowSimilarityThreshold = 0.30
 	}
 	
 	return cfg
@@ -39,16 +53,6 @@ func Load() *Config {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
-	}
-	return defaultValue
-}
-
-// getEnvFloat32 reads a float32 environment variable or returns a default value
-func getEnvFloat32(key string, defaultValue float32) float32 {
-	if value := os.Getenv(key); value != "" {
-		if parsed, err := strconv.ParseFloat(value, 32); err == nil {
-			return float32(parsed)
-		}
 	}
 	return defaultValue
 }

@@ -17,12 +17,12 @@ func TestLoad_Defaults(t *testing.T) {
 		t.Errorf("Expected GrayZoneFallbackModel to be 'gpt-4o-mini', got '%s'", cfg.GrayZoneFallbackModel)
 	}
 	
-	if cfg.HighSimilarityThreshold != 0.95 {
-		t.Errorf("Expected HighSimilarityThreshold to be 0.95, got %f", cfg.HighSimilarityThreshold)
+	if cfg.HighSimilarityThreshold != 0.70 {
+		t.Errorf("Expected HighSimilarityThreshold to be 0.70, got %f", cfg.HighSimilarityThreshold)
 	}
 	
-	if cfg.LowSimilarityThreshold != 0.80 {
-		t.Errorf("Expected LowSimilarityThreshold to be 0.80, got %f", cfg.LowSimilarityThreshold)
+	if cfg.LowSimilarityThreshold != 0.30 {
+		t.Errorf("Expected LowSimilarityThreshold to be 0.30, got %f", cfg.LowSimilarityThreshold)
 	}
 }
 
@@ -68,12 +68,12 @@ func TestLoad_InvalidThresholds(t *testing.T) {
 	cfg := Load()
 	
 	// Should fall back to defaults when parsing fails
-	if cfg.HighSimilarityThreshold != 0.95 {
-		t.Errorf("Expected HighSimilarityThreshold to fall back to 0.95, got %f", cfg.HighSimilarityThreshold)
+	if cfg.HighSimilarityThreshold != 0.70 {
+		t.Errorf("Expected HighSimilarityThreshold to fall back to 0.70, got %f", cfg.HighSimilarityThreshold)
 	}
 	
-	if cfg.LowSimilarityThreshold != 0.80 {
-		t.Errorf("Expected LowSimilarityThreshold to fall back to 0.80, got %f", cfg.LowSimilarityThreshold)
+	if cfg.LowSimilarityThreshold != 0.30 {
+		t.Errorf("Expected LowSimilarityThreshold to fall back to 0.30, got %f", cfg.LowSimilarityThreshold)
 	}
 }
 
@@ -99,38 +99,9 @@ func TestGetEnv(t *testing.T) {
 	}
 }
 
-func TestGetEnvFloat32(t *testing.T) {
-	key := "TEST_FLOAT_VAR"
-	defaultVal := float32(0.5)
-	customVal := float32(0.75)
-	
-	// Test with no env var set
-	os.Unsetenv(key)
-	result := getEnvFloat32(key, defaultVal)
-	if result != defaultVal {
-		t.Errorf("Expected %f, got %f", defaultVal, result)
-	}
-	
-	// Test with valid env var set
-	os.Setenv(key, "0.75")
-	defer os.Unsetenv(key)
-	
-	result = getEnvFloat32(key, defaultVal)
-	if result != customVal {
-		t.Errorf("Expected %f, got %f", customVal, result)
-	}
-	
-	// Test with invalid env var (should return default)
-	os.Setenv(key, "invalid")
-	result = getEnvFloat32(key, defaultVal)
-	if result != defaultVal {
-		t.Errorf("Expected %f, got %f", defaultVal, result)
-	}
-}
-
 func TestLoad_InvalidThresholdOrdering(t *testing.T) {
 	// Set thresholds where high is less than or equal to low (invalid)
-	os.Setenv("HIGH_SIMILARITY_THRESHOLD", "0.70")
+	os.Setenv("HIGH_SIMILARITY_THRESHOLD", "0.20")
 	os.Setenv("LOW_SIMILARITY_THRESHOLD", "0.90")
 	
 	// Cleanup after test
@@ -142,25 +113,25 @@ func TestLoad_InvalidThresholdOrdering(t *testing.T) {
 	cfg := Load()
 	
 	// Should fall back to defaults when ordering is invalid
-	if cfg.HighSimilarityThreshold != 0.95 {
-		t.Errorf("Expected HighSimilarityThreshold to fall back to 0.95, got %f", cfg.HighSimilarityThreshold)
+	if cfg.HighSimilarityThreshold != 0.70 {
+		t.Errorf("Expected HighSimilarityThreshold to fall back to 0.70, got %f", cfg.HighSimilarityThreshold)
 	}
 	
-	if cfg.LowSimilarityThreshold != 0.80 {
-		t.Errorf("Expected LowSimilarityThreshold to fall back to 0.80, got %f", cfg.LowSimilarityThreshold)
+	if cfg.LowSimilarityThreshold != 0.30 {
+		t.Errorf("Expected LowSimilarityThreshold to fall back to 0.30, got %f", cfg.LowSimilarityThreshold)
 	}
 	
 	// Test equal thresholds (also invalid)
-	os.Setenv("HIGH_SIMILARITY_THRESHOLD", "0.85")
-	os.Setenv("LOW_SIMILARITY_THRESHOLD", "0.85")
+	os.Setenv("HIGH_SIMILARITY_THRESHOLD", "0.50")
+	os.Setenv("LOW_SIMILARITY_THRESHOLD", "0.50")
 	
 	cfg = Load()
 	
-	if cfg.HighSimilarityThreshold != 0.95 {
-		t.Errorf("Expected HighSimilarityThreshold to fall back to 0.95, got %f", cfg.HighSimilarityThreshold)
+	if cfg.HighSimilarityThreshold != 0.70 {
+		t.Errorf("Expected HighSimilarityThreshold to fall back to 0.70, got %f", cfg.HighSimilarityThreshold)
 	}
 	
-	if cfg.LowSimilarityThreshold != 0.80 {
-		t.Errorf("Expected LowSimilarityThreshold to fall back to 0.80, got %f", cfg.LowSimilarityThreshold)
+	if cfg.LowSimilarityThreshold != 0.30 {
+		t.Errorf("Expected LowSimilarityThreshold to fall back to 0.30, got %f", cfg.LowSimilarityThreshold)
 	}
 }

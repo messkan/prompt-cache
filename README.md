@@ -119,8 +119,8 @@ PromptCache can be configured using environment variables to fine-tune its behav
 |----------|-------------|---------------|---------|
 | `OPENAI_API_KEY` | Your OpenAI API key (required) | - | `sk-...` |
 | `GRAY_ZONE_FALLBACK_MODEL` | Model used for semantic verification in the "gray zone" | `gpt-4o-mini` | `gpt-4`, `gpt-4o-mini` |
-| `HIGH_SIMILARITY_THRESHOLD` | Threshold above which cache hit is guaranteed | `0.95` | `0.90`, `0.98` |
-| `LOW_SIMILARITY_THRESHOLD` | Threshold below which cache miss is guaranteed | `0.80` | `0.70`, `0.85` |
+| `HIGH_SIMILARITY_THRESHOLD` | Threshold above which cache hit is guaranteed | `0.70` | `0.80`, `0.90` |
+| `LOW_SIMILARITY_THRESHOLD` | Threshold below which cache miss is guaranteed | `0.30` | `0.20`, `0.40` |
 
 ### Example Usage
 
@@ -135,8 +135,8 @@ export LOW_SIMILARITY_THRESHOLD=0.85
 
 **Understanding Thresholds:**
 
-- **High Threshold (0.95 default)**: Similarity scores **above** this value result in an immediate cache hit without verification.
-- **Low Threshold (0.80 default)**: Similarity scores **below** this value result in an immediate cache miss.
+- **High Threshold (0.70 default)**: Similarity scores **above** this value result in an immediate cache hit without verification.
+- **Low Threshold (0.30 default)**: Similarity scores **below** this value result in an immediate cache miss.
 - **Gray Zone (between thresholds)**: Scores in this range trigger semantic verification using the `GRAY_ZONE_FALLBACK_MODEL` to ensure intent matches.
 
 **Tuning Tips:**
