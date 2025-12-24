@@ -30,6 +30,7 @@ func (m *MockStorage) GetPrompt(ctx context.Context, key string) (string, error)
 func (m *MockStorage) Set(ctx context.Context, key string, value []byte) error { return nil }
 func (m *MockStorage) Get(ctx context.Context, key string) ([]byte, error)     { return nil, nil }
 func (m *MockStorage) Delete(ctx context.Context, key string) error            { return nil }
+func (m *MockStorage) CountEmbeddings(ctx context.Context) (int64, error)      { return int64(len(m.embeddings)), nil }
 func (m *MockStorage) Close()                                                  {}
 
 // MockVerifier implements Verifier
