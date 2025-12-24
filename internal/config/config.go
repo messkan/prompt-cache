@@ -25,6 +25,13 @@ func Load() *Config {
 		LowSimilarityThreshold:  getEnvFloat32("LOW_SIMILARITY_THRESHOLD", 0.80),
 	}
 	
+	// Validate thresholds
+	if cfg.HighSimilarityThreshold <= cfg.LowSimilarityThreshold {
+		// If invalid, reset to sensible defaults
+		cfg.HighSimilarityThreshold = 0.95
+		cfg.LowSimilarityThreshold = 0.80
+	}
+	
 	return cfg
 }
 

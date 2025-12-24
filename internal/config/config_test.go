@@ -127,3 +127,40 @@ func TestGetEnvFloat32(t *testing.T) {
 		t.Errorf("Expected %f, got %f", defaultVal, result)
 	}
 }
+
+func TestLoad_InvalidThresholdOrdering(t *testing.T) {
+	// Set thresholds where high is less than or equal to low (invalid)
+	os.Setenv("HIGH_SIMILARITY_THRESHOLD", "0.70")
+	os.Setenv("LOW_SIMILARITY_THRESHOLD", "0.90")
+	
+	// Cleanup after test
+	defer func() {
+		os.Unsetenv("HIGH_SIMILARITY_THRESHOLD")
+		os.Unsetenv("LOW_SIMILARITY_THRESHOLD")
+	}()
+	
+	cfg := Load()
+	
+	// Should fall back to defaults when ordering is invalid
+	if cfg.HighSimilarityThreshold != 0.95 {
+		t.Errorf("Expected HighSimilarityThreshold to fall back to 0.95, got %f", cfg.HighSimilarityThreshold)
+	}
+	
+	if cfg.LowSimilarityThreshold != 0.80 {
+		t.Errorf("Expected LowSimilarityThreshold to fall back to 0.80, got %f", cfg.LowSimilarityThreshold)
+	}
+	
+	// Test equal thresholds (also invalid)
+	os.Setenv("HIGH_SIMILARITY_THRESHOLD", "0.85")
+	os.Setenv("LOW_SIMILARITY_THRESHOLD", "0.85")
+	
+	cfg = Load()
+	
+	if cfg.HighSimilarityThreshold != 0.95 {
+		t.Errorf("Expected HighSimilarityThreshold to fall back to 0.95, got %f", cfg.HighSimilarityThreshold)
+	}
+	
+	if cfg.LowSimilarityThreshold != 0.80 {
+		t.Errorf("Expected LowSimilarityThreshold to fall back to 0.80, got %f", cfg.LowSimilarityThreshold)
+	}
+}
