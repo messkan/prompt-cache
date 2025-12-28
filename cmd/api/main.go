@@ -34,14 +34,54 @@ func main() {
 	}
 	defer store.Close()
 
-	// Initialize Semantic Engine
-	openaiProvider := semantic.NewOpenAIProvider()
-	semanticEngine := semantic.NewSemanticEngine(openaiProvider, store, openaiProvider, 0.95, 0.80)
+	// Initialize Semantic Engine with provider from environment
+	provider, err := semantic.NewProvider()
+	if err != nil {
+		log.Fatalf("Failed to initialize embedding provider: %v", err)
+	}
+	
+	// Load configuration from environment variables
+	config := semantic.LoadConfig()
+	log.Printf("Cache Configuration: HighThreshold=%.2f, LowThreshold=%.2f, GrayZoneVerifier=%v",
+		config.HighThreshold, config.LowThreshold, config.EnableGrayZoneVerifier)
+	
+	semanticEngine := semantic.NewSemanticEngine(provider, store, provider, config)
 
 	// Initialize Cache
 	c := cache.NewCache(store)
 
 	r := gin.Default()
+
+	// Provider management endpoints
+	r.GET("/v1/config/provider", func(cGin *gin.Context) {
+		currentProvider := semanticEngine.GetCurrentProvider()
+		cGin.JSON(http.StatusOK, gin.H{
+			"provider": currentProvider,
+			"available_providers": []string{"openai", "mistral", "claude"},
+		})
+	})
+
+	r.POST("/v1/config/provider", func(cGin *gin.Context) {
+		var req struct {
+			Provider string `json:"provider" binding:"required"`
+		}
+
+		if err := cGin.ShouldBindJSON(&req); err != nil {
+			cGin.JSON(http.StatusBadRequest, gin.H{"error": "provider field is required"})
+			return
+		}
+
+		if err := semanticEngine.SetProvider(req.Provider); err != nil {
+			cGin.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		log.Printf("Provider switched to: %s", req.Provider)
+		cGin.JSON(http.StatusOK, gin.H{
+			"message": "Provider updated successfully",
+			"provider": req.Provider,
+		})
+	})
 
 	r.POST("/v1/chat/completions", func(cGin *gin.Context) {
 		var req ChatCompletionRequest
@@ -131,7 +171,7 @@ func main() {
 			}
 
 			// Save Embedding
-			embedding, err := openaiProvider.Embed(ctx, prompt)
+			embedding, err := semanticEngine.GetProvider().Embed(ctx, prompt)
 			if err == nil {
 				embBytes := semantic.Float32ToBytes(embedding)
 				if err := store.Set(ctx, "emb:"+key, embBytes); err != nil {

@@ -6,7 +6,19 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # Provider selection
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-openai}
+      
+      # Provider API keys
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - VOYAGE_API_KEY=${VOYAGE_API_KEY}
+      
+      # Cache configuration (optional)
+      - CACHE_HIGH_THRESHOLD=${CACHE_HIGH_THRESHOLD:-0.70}
+      - CACHE_LOW_THRESHOLD=${CACHE_LOW_THRESHOLD:-0.30}
+      - ENABLE_GRAY_ZONE_VERIFIER=${ENABLE_GRAY_ZONE_VERIFIER:-true}
     volumes:
       - ./badger_data:/root/badger_data
     restart: unless-stopped

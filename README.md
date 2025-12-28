@@ -9,9 +9,9 @@
 
 ![PromptCache Demo](assets/demo.png)
 
-> [!WARNING]
-> **v0.1.0 is currently in Alpha.** It is not yet production-ready.
-> Significant improvements in stability, performance, and configuration are coming in v0.2.0.
+> [!NOTE]
+> **v0.2.0 is now available!** This version includes support for Mistral and Claude providers.
+> Significant improvements in stability, performance, and configuration are included.
 ---
 
 ## 💰 The Problem
@@ -75,8 +75,16 @@ PromptCache works as a **drop-in replacement** for the OpenAI API.
 git clone https://github.com/messkan/prompt-cache.git
 cd prompt-cache
 
-# Run with Docker Compose
+# Set your embedding provider (default: openai)
+export EMBEDDING_PROVIDER=openai  # Options: openai, mistral, claude
+
+# Set your provider API key(s)
 export OPENAI_API_KEY=your_key_here
+# export MISTRAL_API_KEY=your_key_here
+# export ANTHROPIC_API_KEY=your_key_here
+# export VOYAGE_API_KEY=your_key_here  # Required for Claude embeddings
+
+# Run with Docker Compose
 docker-compose up -d
 ```
 
@@ -109,6 +117,147 @@ No code changes. Just point your client to PromptCache.
 
 ---
 
+## 🔧 Provider Configuration
+
+PromptCache supports multiple AI providers for embeddings and semantic verification. Select your provider using the `EMBEDDING_PROVIDER` environment variable.
+
+### Setting the Provider
+
+```bash
+export EMBEDDING_PROVIDER=openai  # Options: openai, mistral, claude
+```
+
+If not specified, **OpenAI** is used by default.
+
+### OpenAI (Default)
+```bash
+export EMBEDDING_PROVIDER=openai
+export OPENAI_API_KEY=sk-...
+```
+- **Embedding Model**: `text-embedding-3-small`
+- **Verification Model**: `gpt-4o-mini`
+
+### Mistral AI
+```bash
+export EMBEDDING_PROVIDER=mistral
+export MISTRAL_API_KEY=your_mistral_key
+```
+- **Embedding Model**: `mistral-embed`
+- **Verification Model**: `mistral-small-latest`
+
+### Claude (Anthropic)
+```bash
+export EMBEDDING_PROVIDER=claude
+export ANTHROPIC_API_KEY=your_anthropic_key
+export VOYAGE_API_KEY=your_voyage_key  # Required for embeddings
+```
+- **Embedding Model**: `voyage-3` (via Voyage AI)
+- **Verification Model**: `claude-3-haiku-20240307`
+
+> **Note**: Claude uses Voyage AI for embeddings as recommended by Anthropic. You'll need both API keys.
+
+### Switching Providers
+
+The provider is automatically selected at startup based on the `EMBEDDING_PROVIDER` environment variable. Simply set the variable and restart the service:
+
+```bash
+# Switch to Mistral
+export EMBEDDING_PROVIDER=mistral
+export MISTRAL_API_KEY=your_key
+docker-compose restart
+
+# Switch to Claude
+export EMBEDDING_PROVIDER=claude
+export ANTHROPIC_API_KEY=your_key
+export VOYAGE_API_KEY=your_voyage_key
+docker-compose restart
+```
+
+### Advanced Configuration
+
+Fine-tune the semantic cache behavior with these optional environment variables:
+
+#### Similarity Thresholds
+
+```bash
+# High threshold: Direct cache hit (default: 0.70)
+# Scores >= this value return cached results immediately
+export CACHE_HIGH_THRESHOLD=0.70
+
+# Low threshold: Clear miss (default: 0.30)
+# Scores < this value skip the cache entirely
+export CACHE_LOW_THRESHOLD=0.30
+```
+
+**Recommended ranges:**
+- High threshold: 0.65-0.85 (higher = stricter matching)
+- Low threshold: 0.25-0.40 (lower = more aggressive caching)
+- Always ensure: `HIGH_THRESHOLD > LOW_THRESHOLD`
+
+#### Gray Zone Verifier
+
+```bash
+# Enable/disable LLM verification for gray zone scores (default: true)
+# Gray zone = scores between low and high thresholds
+export ENABLE_GRAY_ZONE_VERIFIER=true  # or false, 0, 1, yes, no
+```
+
+**When to disable:**
+- Cost optimization (skip verification API calls)
+- Speed priority (accept slightly lower accuracy)
+- Prompts are highly standardized
+
+**Keep enabled for:**
+- Production environments requiring high accuracy
+- Varied prompt patterns
+- Critical applications where wrong answers are costly
+
+---
+
+## 🔌 API Management
+
+### Dynamic Provider Switching
+
+Change the embedding provider at runtime without restarting the service.
+
+#### Get Current Provider
+
+```bash
+curl http://localhost:8080/v1/config/provider
+```
+
+**Response:**
+```json
+{
+  "provider": "openai",
+  "available_providers": ["openai", "mistral", "claude"]
+}
+```
+
+#### Switch Provider
+
+```bash
+curl -X POST http://localhost:8080/v1/config/provider \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "mistral"}'
+```
+
+**Response:**
+```json
+{
+  "message": "Provider updated successfully",
+  "provider": "mistral"
+}
+```
+
+**Use cases:**
+- A/B testing different providers
+- Fallback to alternative providers during outages
+- Cost optimization by switching based on load
+- Testing provider performance in production
+
+---
+
 ## 🏗 Architecture Overview
 
 Built for speed, safety, and reliability:
@@ -117,6 +266,7 @@ Built for speed, safety, and reliability:
 * **BadgerDB** for fast embedded persistent storage
 * **In-memory caching** for ultra-fast responses
 * **OpenAI-compatible API** for seamless integration
+* **Multiple Provider Support**: OpenAI, Mistral, and Claude (Anthropic)
 * **Docker Setup**
 ---
 
@@ -128,16 +278,22 @@ Built for speed, safety, and reliability:
 * Smart semantic verification (dual-threshold + intent check)
 * OpenAI API compatibility
 
-### 🚧 v0.2.0 (Planned)
+### ✔️ v0.2.0 (Released - December 2025)
 
-* **Core Improvements**: Bug fixes and performance optimizations.
-* **Public API**: Improve cache create/delete operations.
-* **Enhanced Configuration**:
-    * Configurable "gray zone" fallback model (enable/disable env var).
-    * User-definable similarity thresholds with sensible defaults.
+* **Multiple Provider Support**: Built-in support for OpenAI, Mistral, and Claude (Anthropic)
+* **Environment-Based Configuration**: Dynamic provider selection and cache tuning via environment variables
+* **Configurable Thresholds**: User-definable similarity thresholds with sensible defaults
+* **Gray Zone Control**: Enable/disable LLM verification for cost/speed optimization
+* **Dynamic Provider Management**: Switch providers at runtime via REST API
+* **Core Improvements**: Bug fixes and performance optimizations
+* **Enhanced Testing**: Comprehensive unit tests for all providers and configuration
+* **Better Documentation**: Updated configuration guide for all features
 
 ### 🚧 v0.3.0 (Planned)
-* Built-in support for Claude & Mistral APIs
+
+* **Public API**: Enhanced cache management operations (create, delete, list)
+* **Metrics & Monitoring**: Built-in hit rate and latency tracking
+* **Configuration API**: Update thresholds and settings via REST endpoints
 
 ### 🚀 v1.0.0
 
