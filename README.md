@@ -90,6 +90,63 @@ docker-compose up -d
 
 ### 2. Run from Source
 
+```bash
+# Clone the repository
+git clone https://github.com/messkan/prompt-cache.git
+cd prompt-cache
+
+# Set environment variables
+export EMBEDDING_PROVIDER=openai
+export OPENAI_API_KEY=your-openai-api-key
+
+# Option 1: Use the run script (recommended)
+./scripts/run.sh
+
+# Option 2: Use Make
+make run
+
+# Option 3: Build and run manually
+go build -o prompt-cache cmd/api/main.go
+./prompt-cache
+```
+
+### 3. Run Benchmarks
+
+Test the performance and cache effectiveness:
+
+```bash
+# Set your API keys first
+export OPENAI_API_KEY=your-openai-api-key
+
+# Run the full benchmark suite (HTTP-based)
+./scripts/benchmark.sh
+# or
+make benchmark
+
+# Run Go micro-benchmarks (unit-level performance)
+go test ./internal/semantic/... -bench=. -benchmem
+# or
+make bench-go
+```
+
+**Example benchmark results:**
+```
+BenchmarkCosineSimilarity-12      2593046    441.0 ns/op    0 B/op    0 allocs/op
+BenchmarkFindSimilar-12            50000    32000 ns/op  2048 B/op   45 allocs/op
+```
+
+### 4. Available Make Commands
+
+```bash
+make help           # Show all available commands
+make build          # Build the binary
+make test           # Run unit tests
+make benchmark      # Run full benchmark suite
+make clean          # Clean build artifacts
+make docker-build   # Build Docker image
+make docker-run     # Run with Docker Compose
+```
+
 Simply change the `base_url` in your SDK:
 
 ```python
