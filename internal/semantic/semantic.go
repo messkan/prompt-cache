@@ -26,6 +26,7 @@ type Verifier interface {
 type Provider interface {
 	EmbeddingProvider
 	Verifier
+	ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error)
 }
 
 // Config holds configuration for the semantic engine
@@ -72,7 +73,7 @@ func LoadConfig() *Config {
 }
 
 type SemanticEngine struct {
-	Provider               EmbeddingProvider
+	Provider               Provider
 	Store                  Storage
 	Verifier               Verifier
 	HighThreshold          float32
@@ -82,7 +83,7 @@ type SemanticEngine struct {
 	currentProviderName    string       // Tracks the current provider name
 }
 
-func NewSemanticEngine(p EmbeddingProvider, s Storage, v Verifier, config *Config) *SemanticEngine {
+func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *SemanticEngine {
 	if config == nil {
 		config = LoadConfig()
 	}
@@ -161,10 +162,18 @@ func (se *SemanticEngine) GetCurrentProvider() string {
 }
 
 // GetProvider returns the current provider instance (thread-safe)
-func (se *SemanticEngine) GetProvider() EmbeddingProvider {
+func (se *SemanticEngine) GetProvider() Provider {
 	se.mu.RLock()
 	defer se.mu.RUnlock()
 	return se.Provider
+}
+
+// ForwardChatCompletion forwards the request to the current provider
+func (se *SemanticEngine) ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error) {
+	se.mu.RLock()
+	provider := se.Provider
+	se.mu.RUnlock()
+	return provider.ForwardChatCompletion(ctx, requestBody)
 }
 
 func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string, float32, error) {

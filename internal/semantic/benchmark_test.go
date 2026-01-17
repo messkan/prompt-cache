@@ -59,20 +59,19 @@ func BenchmarkFindSimilar(b *testing.B) {
 		storedVec[i] = float32(i+1) / 1536.0
 	}
 	
-	provider := &MockProvider{embedding: queryVec}
+	provider := &MockProvider{embedding: queryVec, similarity: true}
 	store := &MockStorage{
 		embeddings: map[string][]byte{
 			"emb:test1": Float32ToBytes(storedVec),
 		},
 	}
-	verifier := &MockVerifier{match: true}
 	
 	config := &Config{
 		HighThreshold:          0.70,
 		LowThreshold:           0.30,
 		EnableGrayZoneVerifier: true,
 	}
-	engine := NewSemanticEngine(provider, store, verifier, config)
+	engine := NewSemanticEngine(provider, store, provider, config)
 	
 	ctx := context.Background()
 	
@@ -89,7 +88,7 @@ func BenchmarkFindSimilar_MultipleEmbeddings(b *testing.B) {
 		queryVec[i] = float32(i) / 1536.0
 	}
 	
-	provider := &MockProvider{embedding: queryVec}
+	provider := &MockProvider{embedding: queryVec, similarity: true}
 	
 	// Create 100 stored embeddings
 	embeddings := make(map[string][]byte)
@@ -102,14 +101,13 @@ func BenchmarkFindSimilar_MultipleEmbeddings(b *testing.B) {
 	}
 	
 	store := &MockStorage{embeddings: embeddings}
-	verifier := &MockVerifier{match: true}
 	
 	config := &Config{
 		HighThreshold:          0.70,
 		LowThreshold:           0.30,
 		EnableGrayZoneVerifier: true,
 	}
-	engine := NewSemanticEngine(provider, store, verifier, config)
+	engine := NewSemanticEngine(provider, store, provider, config)
 	
 	ctx := context.Background()
 	

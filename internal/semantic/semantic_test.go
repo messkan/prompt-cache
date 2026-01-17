@@ -6,13 +6,26 @@ import (
 	"testing"
 )
 
-// MockProvider implements EmbeddingProvider
+// MockProvider implements the Provider interface for testing
 type MockProvider struct {
-	embedding []float32
+	embedding       []float32
+	similarity      bool
+	forwardResponse []byte
+	forwardStatus   int
+	forwardError    error
+	checkError      error
 }
 
 func (m *MockProvider) Embed(ctx context.Context, text string) ([]float32, error) {
 	return m.embedding, nil
+}
+
+func (m *MockProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 string) (bool, error) {
+	return m.similarity, m.checkError
+}
+
+func (m *MockProvider) ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error) {
+	return m.forwardResponse, m.forwardStatus, m.forwardError
 }
 
 // MockStorage implements Storage
@@ -33,22 +46,13 @@ func (m *MockStorage) Get(ctx context.Context, key string) ([]byte, error)     {
 func (m *MockStorage) Delete(ctx context.Context, key string) error            { return nil }
 func (m *MockStorage) Close()                                                  {}
 
-// MockVerifier implements Verifier
-type MockVerifier struct {
-	match bool
-}
-
-func (m *MockVerifier) CheckSimilarity(ctx context.Context, prompt1, prompt2 string) (bool, error) {
-	return m.match, nil
-}
-
 func TestFindSimilar(t *testing.T) {
 	// Setup
 	queryVec := []float32{1, 0, 0}
 	matchVec := []float32{0.99, 0.01, 0} // Very similar
 	diffVec := []float32{0, 1, 0}        // Orthogonal
 
-	provider := &MockProvider{embedding: queryVec}
+	provider := &MockProvider{embedding: queryVec, similarity: true}
 
 	store := &MockStorage{
 		embeddings: map[string][]byte{
@@ -57,14 +61,12 @@ func TestFindSimilar(t *testing.T) {
 		},
 	}
 
-	verifier := &MockVerifier{match: true}
-
 	config := &Config{
 		HighThreshold:          0.95,
 		LowThreshold:           0.80,
 		EnableGrayZoneVerifier: true,
 	}
-	engine := NewSemanticEngine(provider, store, verifier, config)
+	engine := NewSemanticEngine(provider, store, provider, config)
 
 	// Test Match (High Confidence)
 	key, score, err := engine.FindSimilar(context.Background(), "query")
@@ -85,7 +87,7 @@ func TestFindSimilar_NoMatch(t *testing.T) {
 	queryVec := []float32{1, 0, 0}
 	diffVec := []float32{0, 1, 0} // Orthogonal
 
-	provider := &MockProvider{embedding: queryVec}
+	provider := &MockProvider{embedding: queryVec, similarity: false}
 
 	store := &MockStorage{
 		embeddings: map[string][]byte{
@@ -93,14 +95,12 @@ func TestFindSimilar_NoMatch(t *testing.T) {
 		},
 	}
 
-	verifier := &MockVerifier{match: false}
-
 	config := &Config{
 		HighThreshold:          0.95,
 		LowThreshold:           0.80,
 		EnableGrayZoneVerifier: true,
 	}
-	engine := NewSemanticEngine(provider, store, verifier, config)
+	engine := NewSemanticEngine(provider, store, provider, config)
 
 	// Test No Match
 	key, _, err := engine.FindSimilar(context.Background(), "query")
@@ -288,7 +288,7 @@ func TestFindSimilar_GrayZoneDisabled(t *testing.T) {
 	queryVec := []float32{1, 0, 0}
 	grayVec := []float32{0.85, 0.5, 0.1} // ~85% similarity (in gray zone)
 
-	provider := &MockProvider{embedding: queryVec}
+	provider := &MockProvider{embedding: queryVec, similarity: true}
 
 	store := &MockStorage{
 		embeddings: map[string][]byte{
@@ -296,15 +296,12 @@ func TestFindSimilar_GrayZoneDisabled(t *testing.T) {
 		},
 	}
 
-	// Verifier would say it's a match, but gray zone is disabled
-	verifier := &MockVerifier{match: true}
-
 	config := &Config{
 		HighThreshold:          0.95,
 		LowThreshold:           0.80,
 		EnableGrayZoneVerifier: false, // Disabled
 	}
-	engine := NewSemanticEngine(provider, store, verifier, config)
+	engine := NewSemanticEngine(provider, store, provider, config)
 
 	// Test that gray zone returns empty (no match) when verifier is disabled
 	key, score, err := engine.FindSimilar(context.Background(), "query")

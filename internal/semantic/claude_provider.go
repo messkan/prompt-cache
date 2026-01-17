@@ -106,6 +106,13 @@ type ClaudeChatResponse struct {
 	} `json:"content"`
 }
 
+func (p *ClaudeProvider) ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error) {
+	// Note: The Claude API is not 1:1 compatible with OpenAI's API.
+	// A translation layer is required to convert the request and response formats.
+	// This will be implemented in a subsequent step.
+	return nil, http.StatusNotImplemented, fmt.Errorf("chat completion for claude is not yet implemented")
+}
+
 func (p *ClaudeProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 string) (bool, error) {
 	systemPrompt := "You are a semantic judge. Determine if the two user prompts have the exact same intent and meaning. Answer only with 'YES' or 'NO'."
 	userPrompt := fmt.Sprintf("Prompt 1: %s\nPrompt 2: %s", prompt1, prompt2)

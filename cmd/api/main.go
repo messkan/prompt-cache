@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -132,32 +131,18 @@ func main() {
 			}
 		}
 
-		log.Println("💨 Cache MISS. Forwarding to OpenAI...")
+		log.Printf("💨 Cache MISS. Forwarding to %s...", semanticEngine.GetCurrentProvider())
 
-		// 2. Forward to OpenAI
-		apiKey := os.Getenv("OPENAI_API_KEY")
-		openAIReq, _ := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(bodyBytes))
-		openAIReq.Header.Set("Content-Type", "application/json")
-		openAIReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-		client := &http.Client{}
-		resp, err := client.Do(openAIReq)
+		// 2. Forward to the current provider
+		respBody, statusCode, err := semanticEngine.ForwardChatCompletion(ctx, bodyBytes)
 		if err != nil {
-			log.Printf("Failed to call OpenAI: %v", err)
-			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to call OpenAI: " + err.Error()})
-			return
-		}
-		defer resp.Body.Close()
-
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Printf("Failed to read OpenAI response: %v", err)
-			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read OpenAI response: " + err.Error()})
+			log.Printf("Failed to call provider: %v", err)
+			cGin.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to call provider: " + err.Error()})
 			return
 		}
 
 		// 3. Cache Response & Embedding
-		if resp.StatusCode == http.StatusOK {
+		if statusCode == http.StatusOK {
 			key := cache.GenerateKey(prompt)
 
 			// Save Response
@@ -182,7 +167,7 @@ func main() {
 			}
 		}
 
-		cGin.Data(resp.StatusCode, "application/json", respBody)
+		cGin.Data(statusCode, "application/json", respBody)
 	})
 
 	log.Println("🚀 PromptCache Server running on :8080")
