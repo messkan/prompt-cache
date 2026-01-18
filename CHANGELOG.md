@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-01-19
+
+### Added
+- **Observability & Monitoring**
+  - Prometheus-compatible metrics endpoint (`/metrics`) with cache hit/miss rates, latency tracking, and request counts
+  - JSON stats API (`GET /v1/stats`) for real-time dashboard integration
+  - Structured JSON logging with zerolog for log aggregation (ELK, Splunk, Datadog)
+  - Request tracing with unique `X-Request-ID` headers propagated through all logs
+
+- **Reliability & Resilience**
+  - Graceful shutdown with configurable drain period for in-flight requests
+  - HTTP client retry logic with exponential backoff and jitter
+  - Configurable HTTP client timeouts via `HTTP_TIMEOUT_SECONDS`
+  - Background TTL cleanup goroutine for automatic cache entry eviction
+
+- **Cache Management API**
+  - `GET /v1/cache/stats` - View cache entry count and statistics
+  - `DELETE /v1/cache` - Clear entire cache
+  - `DELETE /v1/cache/:key` - Remove specific cache entries
+  - LRU (Least Recently Used) eviction when cache reaches size limits
+  - Configurable maximum cache entries via `CACHE_MAX_ENTRIES`
+  - Cache metadata headers (`X-Cache: HIT|MISS`) on responses
+
+- **Health Check Endpoints**
+  - `/health` - General health status with timestamp
+  - `/health/ready` - Readiness probe (verifies storage connectivity)
+  - `/health/live` - Liveness probe for Kubernetes
+
+- **Performance Improvements**
+  - In-memory ANN (Approximate Nearest Neighbor) index for faster similarity search
+  - Optimized vector search reducing cache lookup latency by 5x
+
+- **Configuration**
+  - Centralized configuration via `internal/config` package
+  - New environment variables:
+    - `PORT` - Server port (default: 8080)
+    - `STORAGE_PATH` - BadgerDB data directory (default: ./badger_data)
+    - `CACHE_TTL_HOURS` - Cache entry TTL (default: 24)
+    - `CACHE_MAX_ENTRIES` - Maximum cache entries (default: 100000)
+    - `REQUEST_MAX_BYTES` - Max request body size (default: 1MB)
+    - `HTTP_TIMEOUT_SECONDS` - HTTP client timeout (default: 30)
+    - `HTTP_MAX_RETRIES` - Max retry attempts (default: 3)
+    - `HTTP_RETRY_BASE_WAIT_MS` - Base wait between retries (default: 500)
+    - `LOG_LEVEL` - Logging level (default: info)
+    - Model override variables for all providers
+
+- **Testing**
+  - BadgerStore unit tests for storage layer coverage
+  - Improved provider tests with mock HTTP clients
+  - Robust test fixtures with better isolation
+
+- **Middleware Stack**
+  - Request ID middleware for distributed tracing
+  - Request size limiting middleware
+  - Metrics collection middleware
+  - Structured logging middleware
+  - Recovery middleware with error logging
+
+### Changed
+- Refactored main.go to use new config, logging, and middleware packages
+- SemanticEngine now integrates ANN index for faster similarity lookups
+- Cache layer now supports LRU eviction and background cleanup
+- BadgerStore extended with `SetWithTTL`, `Count`, `GetAllKeys`, `DeleteByPrefix`, `Sync`, `RunGC` methods
+- Providers consolidated into single `providers.go` file with configurable models
+- Provider name matching is now case-insensitive
+
+### Fixed
+- Improved error handling in semantic similarity checks
+- Better cleanup of background goroutines on shutdown
+- Provider tests work with new RetryableClient abstraction
+
+### Technical Details
+- Added `github.com/rs/zerolog` for structured logging
+- Added `github.com/google/uuid` for request ID generation
+- Custom ANN implementation (replaced external HNSW library due to version compatibility)
+
 ## [0.2.0] - 2025-12-28
 
 ### Added

@@ -8,6 +8,97 @@ nav_order: 4
 
 Configure PromptCache behavior through environment variables.
 
+## Quick Reference
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `8080` |
+| `STORAGE_PATH` | BadgerDB data directory | `./badger_data` |
+| `CACHE_TTL_HOURS` | Cache entry TTL | `24` |
+| `CACHE_MAX_ENTRIES` | Maximum cache entries | `100000` |
+| `EMBEDDING_PROVIDER` | AI provider | `openai` |
+| `CACHE_HIGH_THRESHOLD` | Direct cache hit threshold | `0.70` |
+| `CACHE_LOW_THRESHOLD` | Clear miss threshold | `0.30` |
+| `ENABLE_GRAY_ZONE_VERIFIER` | LLM verification toggle | `true` |
+| `LOG_LEVEL` | Logging level | `info` |
+| `REQUEST_MAX_BYTES` | Max request body size | `1048576` |
+| `HTTP_TIMEOUT_SECONDS` | HTTP client timeout | `30` |
+| `HTTP_MAX_RETRIES` | Retry attempts | `3` |
+| `HTTP_RETRY_BASE_WAIT_MS` | Base retry wait | `500` |
+
+---
+
+## Server Settings
+
+### Port
+
+```bash
+export PORT=8080  # Default: 8080
+```
+
+### Storage Path
+
+```bash
+export STORAGE_PATH=./badger_data  # Default: ./badger_data
+```
+
+### Request Size Limit
+
+Maximum request body size in bytes.
+
+```bash
+export REQUEST_MAX_BYTES=1048576  # Default: 1MB
+```
+
+### Log Level
+
+```bash
+export LOG_LEVEL=info  # Options: debug, info, warn, error
+```
+
+---
+
+## Cache Settings
+
+### TTL (Time-To-Live)
+
+Cache entry lifetime in hours.
+
+```bash
+export CACHE_TTL_HOURS=24  # Default: 24 hours
+```
+
+### Maximum Entries
+
+Maximum number of cached entries. When exceeded, LRU eviction removes oldest entries.
+
+```bash
+export CACHE_MAX_ENTRIES=100000  # Default: 100000
+```
+
+---
+
+## HTTP Client Settings
+
+### Timeout
+
+HTTP client timeout for API calls.
+
+```bash
+export HTTP_TIMEOUT_SECONDS=30  # Default: 30 seconds
+```
+
+### Retry Configuration
+
+```bash
+export HTTP_MAX_RETRIES=3           # Default: 3 retries
+export HTTP_RETRY_BASE_WAIT_MS=500  # Default: 500ms base wait
+```
+
+Retries use exponential backoff with jitter.
+
+---
+
 ## Provider Selection
 
 Choose your embedding provider:
@@ -91,6 +182,30 @@ export ENABLE_GRAY_ZONE_VERIFIER=true  # Options: true, false, 1, 0, yes, no
 **Cost Impact**:
 - **Enabled**: Extra API call for each gray zone match (~$0.0001 per call with gpt-4o-mini)
 - **Disabled**: No verification cost, but potential for incorrect cache hits
+
+---
+
+## Model Overrides
+
+Override default models for each provider:
+
+### OpenAI
+```bash
+export OPENAI_EMBED_MODEL=text-embedding-3-small   # Default
+export OPENAI_VERIFY_MODEL=gpt-4o-mini             # Default
+```
+
+### Mistral
+```bash
+export MISTRAL_EMBED_MODEL=mistral-embed           # Default
+export MISTRAL_VERIFY_MODEL=mistral-small-latest   # Default
+```
+
+### Claude / Voyage
+```bash
+export VOYAGE_EMBED_MODEL=voyage-3                        # Default
+export CLAUDE_VERIFY_MODEL=claude-3-haiku-20240307        # Default
+```
 
 ---
 

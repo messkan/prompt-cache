@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	internalhttp "github.com/messkan/PromptCache/internal/http"
 )
 
 // Mock HTTP RoundTripper for testing
@@ -23,6 +25,15 @@ func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	return m.Response, nil
 }
 
+// Helper to create a mock retryable client
+func newMockClient(response *http.Response) *internalhttp.RetryableClient {
+	return internalhttp.NewRetryableClientWithHTTPClient(&http.Client{
+		Transport: &MockRoundTripper{
+			Response: response,
+		},
+	})
+}
+
 func TestMistralProvider_Embed(t *testing.T) {
 	mockResponse := MistralEmbeddingResponse{
 		Data: []struct {
@@ -35,15 +46,13 @@ func TestMistralProvider_Embed(t *testing.T) {
 	jsonBytes, _ := json.Marshal(mockResponse)
 
 	provider := &MistralProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:      "test-key",
+		embedModel:  "mistral-embed",
+		verifyModel: "mistral-small-latest",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	embedding, err := provider.Embed(context.Background(), "test text")
@@ -72,15 +81,13 @@ func TestMistralProvider_CheckSimilarity_Match(t *testing.T) {
 	jsonBytes, _ := json.Marshal(mockResponse)
 
 	provider := &MistralProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:      "test-key",
+		embedModel:  "mistral-embed",
+		verifyModel: "mistral-small-latest",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
@@ -105,15 +112,13 @@ func TestMistralProvider_CheckSimilarity_NoMatch(t *testing.T) {
 	jsonBytes, _ := json.Marshal(mockResponse)
 
 	provider := &MistralProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:      "test-key",
+		embedModel:  "mistral-embed",
+		verifyModel: "mistral-small-latest",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
@@ -141,15 +146,14 @@ func TestClaudeProvider_Embed(t *testing.T) {
 	t.Setenv("VOYAGE_API_KEY", "test-voyage-key")
 
 	provider := &ClaudeProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:      "test-key",
+		chatModel:   "claude-3-opus-20240229",
+		verifyModel: "claude-3-haiku-20240307",
+		voyageModel: "voyage-3",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	embedding, err := provider.Embed(context.Background(), "test text")
@@ -167,9 +171,15 @@ func TestClaudeProvider_Embed(t *testing.T) {
 }
 
 func TestClaudeProvider_Embed_NoVoyageKey(t *testing.T) {
+	// Ensure VOYAGE_API_KEY is not set
+	t.Setenv("VOYAGE_API_KEY", "")
+	
 	provider := &ClaudeProvider{
-		apiKey: "test-key",
-		client: &http.Client{},
+		apiKey:      "test-key",
+		chatModel:   "claude-3-opus-20240229",
+		verifyModel: "claude-3-haiku-20240307",
+		voyageModel: "voyage-3",
+		client:      newMockClient(&http.Response{StatusCode: http.StatusOK}),
 	}
 
 	_, err := provider.Embed(context.Background(), "test text")
@@ -194,15 +204,14 @@ func TestClaudeProvider_CheckSimilarity_Match(t *testing.T) {
 	jsonBytes, _ := json.Marshal(mockResponse)
 
 	provider := &ClaudeProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:      "test-key",
+		chatModel:   "claude-3-opus-20240229",
+		verifyModel: "claude-3-haiku-20240307",
+		voyageModel: "voyage-3",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
@@ -227,15 +236,14 @@ func TestClaudeProvider_CheckSimilarity_NoMatch(t *testing.T) {
 	jsonBytes, _ := json.Marshal(mockResponse)
 
 	provider := &ClaudeProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:      "test-key",
+		chatModel:   "claude-3-opus-20240229",
+		verifyModel: "claude-3-haiku-20240307",
+		voyageModel: "voyage-3",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
@@ -260,15 +268,13 @@ func TestOpenAIProvider_Embed(t *testing.T) {
 	jsonBytes, _ := json.Marshal(mockResponse)
 
 	provider := &OpenAIProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:     "test-key",
+		embedModel: "text-embedding-3-small",
+		chatModel:  "gpt-4o-mini",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	embedding, err := provider.Embed(context.Background(), "test text")
@@ -297,15 +303,13 @@ func TestOpenAIProvider_CheckSimilarity_Match(t *testing.T) {
 	jsonBytes, _ := json.Marshal(mockResponse)
 
 	provider := &OpenAIProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:     "test-key",
+		embedModel: "text-embedding-3-small",
+		chatModel:  "gpt-4o-mini",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
@@ -330,15 +334,13 @@ func TestOpenAIProvider_CheckSimilarity_NoMatch(t *testing.T) {
 	jsonBytes, _ := json.Marshal(mockResponse)
 
 	provider := &OpenAIProvider{
-		apiKey: "test-key",
-		client: &http.Client{
-			Transport: &MockRoundTripper{
-				Response: &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-				},
-			},
-		},
+		apiKey:     "test-key",
+		embedModel: "text-embedding-3-small",
+		chatModel:  "gpt-4o-mini",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
 	}
 
 	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
@@ -348,5 +350,55 @@ func TestOpenAIProvider_CheckSimilarity_NoMatch(t *testing.T) {
 
 	if match {
 		t.Errorf("Expected match=false, got true")
+	}
+}
+
+func TestCheckSimilarity_CaseInsensitive(t *testing.T) {
+	// Test that YES matching is case-insensitive
+	testCases := []struct {
+		content string
+		want    bool
+	}{
+		{"YES", true},
+		{"Yes", true},
+		{"yes", true},
+		{" YES ", true},
+		{"NO", false},
+		{"No", false},
+		{"no", false},
+		{"Maybe", false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.content, func(t *testing.T) {
+			mockResponse := VerificationResponse{
+				Choices: []struct {
+					Message Message `json:"message"`
+				}{
+					{Message: Message{Role: "assistant", Content: tc.content}},
+				},
+			}
+
+			jsonBytes, _ := json.Marshal(mockResponse)
+
+			provider := &OpenAIProvider{
+				apiKey:     "test-key",
+				embedModel: "text-embedding-3-small",
+				chatModel:  "gpt-4o-mini",
+				client: newMockClient(&http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+				}),
+			}
+
+			match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
+			if err != nil {
+				t.Fatalf("CheckSimilarity failed: %v", err)
+			}
+
+			if match != tc.want {
+				t.Errorf("For content %q: got match=%v, want %v", tc.content, match, tc.want)
+			}
+		})
 	}
 }

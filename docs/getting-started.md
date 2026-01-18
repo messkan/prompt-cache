@@ -10,7 +10,7 @@ This guide will help you get PromptCache up and running in minutes.
 
 ## Prerequisites
 
-- Go 1.20 or higher
+- Go 1.24 or higher
 - Docker (optional, for containerized deployment)
 - API keys for your chosen provider(s)
 
@@ -70,14 +70,20 @@ go build -o prompt-cache cmd/api/main.go
 Check that the server is running:
 
 ```bash
+# Health check
+curl http://localhost:8080/health
+# Expected: {"status":"healthy","time":"..."}
+
+# Readiness check (verifies storage is working)
+curl http://localhost:8080/health/ready
+# Expected: {"status":"ready"}
+
 # Get current provider
 curl http://localhost:8080/v1/config/provider
+# Expected: {"provider":"openai","available_providers":["openai","mistral","claude"]}
 
-# Expected response:
-# {
-#   "provider": "openai",
-#   "available_providers": ["openai", "mistral", "claude"]
-# }
+# View metrics
+curl http://localhost:8080/metrics
 ```
 
 ## First Request
@@ -109,19 +115,39 @@ print(response.choices[0].message.content)
 
 ## Monitoring
 
-Watch the server logs to see cache hits and misses:
+### View Statistics
+
+```bash
+# JSON stats
+curl http://localhost:8080/v1/stats
+
+# Prometheus metrics
+curl http://localhost:8080/metrics
+```
+
+### Watch Logs
 
 ```bash
 # Docker
 docker-compose logs -f
 
 # Direct run
-# Logs appear in the terminal
+# Logs appear in the terminal (JSON format)
 ```
 
-Look for these indicators:
-- `🔥 Cache HIT!` - Request served from cache
-- `💨 Cache MISS` - Request forwarded to provider
+Look for log entries with:
+- `"cache_hit":true` - Request served from cache
+- `"cache_hit":false` - Request forwarded to provider
+
+## Cache Management
+
+```bash
+# View cache stats
+curl http://localhost:8080/v1/cache/stats
+
+# Clear all cache
+curl -X DELETE http://localhost:8080/v1/cache
+```
 
 ## Next Steps
 
@@ -135,7 +161,7 @@ Look for these indicators:
 
 Check that:
 1. The required API key is set for your provider
-2. Port 8080 is not already in use
+2. Port 8080 is not already in use (or change with `PORT` env var)
 3. BadgerDB data directory is writable
 
 ### Cache not working
@@ -144,6 +170,7 @@ Verify:
 1. Prompts are semantically similar
 2. Similarity thresholds are properly configured
 3. Gray zone verifier is enabled (if needed)
+4. Check `/v1/stats` for hit rates
 
 ### Provider errors
 

@@ -6,8 +6,9 @@ nav_order: 1
 
 # PromptCache Documentation
 
-![PromptCache](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)
+![PromptCache](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
 
 **A smart semantic cache for high-scale GenAI workloads.**
 
@@ -21,6 +22,16 @@ PromptCache is a lightweight middleware that sits between your application and y
 - **Improve Latency**: ~300ms vs ~1.5s average response time
 - **Better Scale**: Unlimited throughput without API rate limits
 - **Smart Matching**: Semantic understanding prevents incorrect cache hits
+
+## What's New in v0.3.0
+
+- 📊 **Prometheus Metrics** - Export hit rates, latency, and request counts
+- 🏥 **Health Checks** - Kubernetes-ready liveness/readiness probes
+- 🗃️ **Cache Management API** - View stats, clear cache, delete entries
+- 📝 **Structured Logging** - JSON logs for easy aggregation
+- ⚡ **ANN Index** - 5x faster similarity search
+- 🔄 **Graceful Shutdown** - Clean request draining
+- 🔁 **Retry Logic** - Automatic retries with exponential backoff
 
 ## Quick Links
 
@@ -55,6 +66,12 @@ This ensures cached responses are semantically correct, not just "close enough".
 - ✅ Docker support
 - ✅ Thread-safe operations
 - ✅ BadgerDB persistence
+- ✅ Prometheus metrics export
+- ✅ Health check endpoints
+- ✅ Cache management API
+- ✅ Structured JSON logging
+- ✅ LRU cache eviction
+- ✅ Request tracing (X-Request-ID)
 
 ## Community
 

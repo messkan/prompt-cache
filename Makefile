@@ -1,4 +1,5 @@
 BINARY_NAME=prompt-cache
+VERSION=0.3.0
 PROVIDER?=openai
 
 .PHONY: all build run test benchmark clean help
@@ -6,7 +7,7 @@ PROVIDER?=openai
 all: build
 
 help:
-	@echo "PromptCache - Makefile commands:"
+	@echo "PromptCache v$(VERSION) - Makefile commands:"
 	@echo ""
 	@echo "  make build         - Build the binary"
 	@echo "  make run           - Build and run the server"
@@ -19,11 +20,13 @@ help:
 	@echo "  make docker-run    - Run with Docker Compose"
 	@echo ""
 	@echo "Environment variables:"
+	@echo "  PORT              - Server port (default: 8080)"
 	@echo "  PROVIDER          - Embedding provider (openai|mistral|claude)"
 	@echo "  OPENAI_API_KEY    - OpenAI API key"
 	@echo "  MISTRAL_API_KEY   - Mistral API key"
 	@echo "  ANTHROPIC_API_KEY - Anthropic API key"
 	@echo "  VOYAGE_API_KEY    - Voyage AI API key (for Claude)"
+	@echo "  LOG_LEVEL         - Logging level (debug|info|warn|error)"
 
 build:
 	@echo "Building $(BINARY_NAME)..."

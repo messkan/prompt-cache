@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/messkan/PromptCache/internal/ann"
+	"github.com/messkan/PromptCache/internal/metrics"
 )
 
 type EmbeddingProvider interface {
@@ -34,6 +37,8 @@ type Config struct {
 	HighThreshold          float32
 	LowThreshold           float32
 	EnableGrayZoneVerifier bool
+	EmbeddingDimension     int  // Dimension of embeddings (e.g., 1536 for OpenAI, 1024 for Voyage)
+	UseANNIndex            bool // Whether to use ANN index for similarity search
 }
 
 // LoadConfig loads configuration from environment variables with sensible defaults
@@ -42,6 +47,8 @@ func LoadConfig() *Config {
 		HighThreshold:          0.70, // Default: 70% similarity for direct cache hit
 		LowThreshold:           0.30, // Default: below 30% is a clear miss
 		EnableGrayZoneVerifier: true, // Default: enable smart verification
+		EmbeddingDimension:     1536, // Default: OpenAI text-embedding-3-small
+		UseANNIndex:            true, // Default: use ANN index
 	}
 
 	// Load high threshold
@@ -63,6 +70,18 @@ func LoadConfig() *Config {
 		config.EnableGrayZoneVerifier = val == "true" || val == "1" || val == "yes"
 	}
 
+	// Load embedding dimension
+	if val := os.Getenv("EMBEDDING_DIMENSION"); val != "" {
+		if dim, err := strconv.Atoi(val); err == nil && dim > 0 {
+			config.EmbeddingDimension = dim
+		}
+	}
+
+	// Load ANN index setting
+	if val := os.Getenv("USE_ANN_INDEX"); val != "" {
+		config.UseANNIndex = val == "true" || val == "1" || val == "yes"
+	}
+
 	// Ensure high threshold is greater than low threshold
 	if config.HighThreshold <= config.LowThreshold {
 		config.HighThreshold = 0.70
@@ -81,6 +100,9 @@ type SemanticEngine struct {
 	EnableGrayZoneVerifier bool
 	mu                     sync.RWMutex // Protects Provider and Verifier
 	currentProviderName    string       // Tracks the current provider name
+	annIndex               *ann.Index   // ANN index for fast similarity search
+	useANNIndex            bool         // Whether to use ANN index
+	embeddingDimension     int          // Dimension of embeddings
 }
 
 func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *SemanticEngine {
@@ -96,7 +118,7 @@ func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *Seman
 		providerName = "openai" // default
 	}
 	
-	return &SemanticEngine{
+	se := &SemanticEngine{
 		Provider:               p,
 		Store:                  s,
 		Verifier:               v,
@@ -104,6 +126,51 @@ func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *Seman
 		LowThreshold:           config.LowThreshold,
 		EnableGrayZoneVerifier: config.EnableGrayZoneVerifier,
 		currentProviderName:    providerName,
+		useANNIndex:            config.UseANNIndex,
+		embeddingDimension:     config.EmbeddingDimension,
+	}
+
+	// Initialize ANN index if enabled
+	if config.UseANNIndex {
+		se.annIndex = ann.New(config.EmbeddingDimension)
+		// Load existing embeddings into index
+		go se.rebuildANNIndex()
+	}
+
+	return se
+}
+
+// rebuildANNIndex loads all existing embeddings into the ANN index
+func (se *SemanticEngine) rebuildANNIndex() {
+	if se.annIndex == nil {
+		return
+	}
+
+	ctx := context.Background()
+	stored, err := se.Store.GetAllEmbeddings(ctx)
+	if err != nil {
+		return
+	}
+
+	count := 0
+	for key, embBytes := range stored {
+		embVec := BytesToFloat32(embBytes)
+		se.annIndex.Add(key, embVec)
+		count++
+	}
+
+	m := metrics.Get()
+	m.SetStoredVectors(uint64(count))
+}
+
+// AddToIndex adds an embedding to the ANN index
+func (se *SemanticEngine) AddToIndex(key string, embedding []float32) {
+	if se.annIndex != nil {
+		se.annIndex.Add(key, embedding)
+		m := metrics.Get()
+		// Increment stored vectors count
+		stored, _ := se.Store.GetAllEmbeddings(context.Background())
+		m.SetStoredVectors(uint64(len(stored)))
 	}
 }
 
@@ -180,44 +247,73 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 	se.mu.RLock()
 	provider := se.Provider
 	verifier := se.Verifier
+	useANN := se.useANNIndex && se.annIndex != nil
 	se.mu.RUnlock()
+	
+	m := metrics.Get()
 	
 	queryEmb, err := provider.Embed(ctx, text)
 	if err != nil {
 		return "", 0, err
 	}
 
-	stored, err := se.Store.GetAllEmbeddings(ctx)
-	if err != nil {
-		return "", 0, err
-	}
+	var bestKey string
+	var bestSim float32
 
-	bestKey := ""
-	bestSim := float32(0)
+	if useANN {
+		// Use ANN index for O(log n) similarity search
+		keys, distances := se.annIndex.Search(queryEmb, 1)
+		if len(keys) > 0 {
+			bestKey = keys[0]
+			// HNSW returns distance, convert to similarity
+			// For cosine distance: similarity = 1 - distance
+			bestSim = 1.0 - distances[0]
+			
+			// Verify with exact cosine similarity for accuracy
+			embBytes, err := se.Store.GetAllEmbeddings(ctx)
+			if err == nil {
+				if emb, ok := embBytes[bestKey]; ok {
+					embVec := BytesToFloat32(emb)
+					bestSim = CosineSimilarity(queryEmb, embVec)
+				}
+			}
+		}
+	} else {
+		// Fallback to linear scan
+		stored, err := se.Store.GetAllEmbeddings(ctx)
+		if err != nil {
+			return "", 0, err
+		}
 
-	for key, embBytes := range stored {
-		embVec := BytesToFloat32(embBytes)
-		sim := CosineSimilarity(queryEmb, embVec)
+		for key, embBytes := range stored {
+			embVec := BytesToFloat32(embBytes)
+			sim := CosineSimilarity(queryEmb, embVec)
 
-		if sim > bestSim {
-			bestSim = sim
-			bestKey = key
+			if sim > bestSim {
+				bestSim = sim
+				bestKey = key
+			}
 		}
 	}
 
 	// 1. Clear Match
 	if bestSim >= se.HighThreshold {
+		m.RecordCacheHit()
 		return bestKey, bestSim, nil
 	}
 
 	// 2. Clear Mismatch
 	if bestSim < se.LowThreshold {
+		m.RecordCacheMiss()
 		return "", bestSim, nil
 	}
 
 	// 3. Gray Zone -> Smart Verification (if enabled)
+	m.RecordCacheGrayZone()
+	
 	if !se.EnableGrayZoneVerifier {
 		// Gray zone verification disabled, treat as miss
+		m.RecordCacheMiss()
 		return "", bestSim, nil
 	}
 
@@ -227,17 +323,21 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 	originalPrompt, err := se.Store.GetPrompt(ctx, hashKey)
 	if err != nil {
 		// If we can't find the prompt, we can't verify, so we assume miss to be safe
+		m.RecordCacheMiss()
 		return "", bestSim, nil
 	}
 
 	isMatch, err := verifier.CheckSimilarity(ctx, text, originalPrompt)
 	if err != nil {
+		m.RecordCacheMiss()
 		return "", bestSim, err
 	}
 
 	if isMatch {
+		m.RecordCacheHit()
 		return bestKey, bestSim, nil
 	}
 
+	m.RecordCacheMiss()
 	return "", bestSim, nil
 }

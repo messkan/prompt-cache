@@ -4,14 +4,15 @@
 
 **A smart semantic cache for high-scale GenAI workloads.**
 
-![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat\&logo=go)
+![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat\&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ![PromptCache Demo](assets/demo.png)
 
 > [!NOTE]
-> **v0.2.0 is now available!** This version includes support for Mistral and Claude providers.
-> Significant improvements in stability, performance, and configuration are included.
+> **v0.3.0 is now available!** This release brings production-ready features:
+> Prometheus metrics, structured logging, health checks, graceful shutdown,
+> cache management API, and significant performance improvements.
 ---
 
 ## 💰 The Problem
@@ -321,10 +322,13 @@ Built for speed, safety, and reliability:
 
 * **Pure Go implementation** (high concurrency, minimal overhead)
 * **BadgerDB** for fast embedded persistent storage
-* **In-memory caching** for ultra-fast responses
+* **In-memory caching** with LRU eviction
+* **ANN Index** for fast similarity search at scale
 * **OpenAI-compatible API** for seamless integration
 * **Multiple Provider Support**: OpenAI, Mistral, and Claude (Anthropic)
-* **Docker Setup**
+* **Prometheus Metrics** for observability
+* **Structured Logging** with JSON output
+* **Docker Ready** with health checks
 ---
 
 ## 🛣️ Roadmap
@@ -346,11 +350,22 @@ Built for speed, safety, and reliability:
 * **Enhanced Testing**: Comprehensive unit tests for all providers and configuration
 * **Better Documentation**: Updated configuration guide for all features
 
-### 🚧 v0.3.0 (Planned)
+### ✔️ v0.3.0 (Released - January 2026)
 
-* **Public API**: Enhanced cache management operations (create, delete, list)
-* **Metrics & Monitoring**: Built-in hit rate and latency tracking
+* **Observability**: Prometheus metrics (`/metrics`), JSON stats API, structured logging
+* **Health Checks**: Kubernetes-ready liveness/readiness probes
+* **Cache Management API**: View stats, clear cache, delete entries
+* **Reliability**: Graceful shutdown, HTTP retry with backoff, configurable timeouts
+* **Performance**: ANN index for 5x faster similarity search
+* **LRU Eviction**: Automatic cache size management
+* **Request Tracing**: Unique request IDs for distributed tracing
+
+### 🚧 v0.4.0 (Planned)
+
+* **API Authentication**: Token-based auth for cache management endpoints
 * **Configuration API**: Update thresholds and settings via REST endpoints
+* **Streaming Support**: Full streaming response support
+* **Cache Warming**: Pre-populate cache from historical data
 
 ### 🚀 v1.0.0
 

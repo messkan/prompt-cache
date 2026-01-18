@@ -16,6 +16,175 @@ http://localhost:8080
 
 ---
 
+## Health Checks
+
+Kubernetes-ready health check endpoints.
+
+### GET /health
+
+General health status.
+
+**Response (200 OK)**
+```json
+{
+  "status": "healthy",
+  "time": "2026-01-19T12:00:00Z"
+}
+```
+
+### GET /health/ready
+
+Readiness probe - verifies storage is accessible.
+
+**Response (200 OK)**
+```json
+{
+  "status": "ready"
+}
+```
+
+**Response (503 Service Unavailable)**
+```json
+{
+  "status": "not ready",
+  "error": "storage not accessible"
+}
+```
+
+### GET /health/live
+
+Liveness probe - simple alive check.
+
+**Response (200 OK)**
+```json
+{
+  "status": "alive"
+}
+```
+
+---
+
+## Metrics & Statistics
+
+Endpoints for monitoring and observability.
+
+### GET /metrics
+
+Prometheus-compatible metrics export.
+
+**Response (200 OK)**
+```
+# HELP promptcache_cache_hits_total Total number of cache hits
+# TYPE promptcache_cache_hits_total counter
+promptcache_cache_hits_total 1234
+
+# HELP promptcache_cache_misses_total Total number of cache misses
+# TYPE promptcache_cache_misses_total counter
+promptcache_cache_misses_total 567
+
+# HELP promptcache_requests_total Total number of requests
+# TYPE promptcache_requests_total counter
+promptcache_requests_total 1801
+
+# HELP promptcache_request_latency_seconds Request latency histogram
+# TYPE promptcache_request_latency_seconds histogram
+promptcache_request_latency_seconds_sum 45.2
+promptcache_request_latency_seconds_count 1801
+```
+
+**Example - cURL**
+```bash
+curl http://localhost:8080/metrics
+```
+
+### GET /v1/stats
+
+JSON statistics for dashboards.
+
+**Response (200 OK)**
+```json
+{
+  "cache_hits": 1234,
+  "cache_misses": 567,
+  "cache_hit_rate": 0.685,
+  "gray_zone_checks": 89,
+  "total_requests": 1801,
+  "failed_requests": 2,
+  "avg_latency_ms": 25.1,
+  "stored_vectors": 892,
+  "provider_calls": 567,
+  "provider_errors": 1
+}
+```
+
+**Example - cURL**
+```bash
+curl http://localhost:8080/v1/stats
+```
+
+---
+
+## Cache Management
+
+Endpoints for managing cached entries.
+
+### GET /v1/cache/stats
+
+Get cache statistics.
+
+**Response (200 OK)**
+```json
+{
+  "entry_count": 892,
+  "max_entries": 100000,
+  "ttl_hours": 24
+}
+```
+
+### DELETE /v1/cache
+
+Clear the entire cache.
+
+**Response (200 OK)**
+```json
+{
+  "message": "Cache cleared successfully",
+  "deleted_count": 892
+}
+```
+
+**Example - cURL**
+```bash
+curl -X DELETE http://localhost:8080/v1/cache
+```
+
+### DELETE /v1/cache/:key
+
+Delete a specific cache entry.
+
+**Parameters**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| key | string | Yes | The cache key to delete (URL path parameter) |
+
+**Response (200 OK)**
+```json
+{
+  "message": "Entry deleted successfully",
+  "key": "abc123..."
+}
+```
+
+**Response (404 Not Found)**
+```json
+{
+  "error": "Entry not found"
+}
+```
+
+---
+
 ## Chat Completions
 
 OpenAI-compatible endpoint for chat completions with semantic caching.

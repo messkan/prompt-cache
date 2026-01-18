@@ -4,6 +4,8 @@
 
 **A smart semantic cache for high-scale GenAI workloads.**
 
+![Version](https://img.shields.io/badge/version-0.3.0-blue)
+
 ---
 
 ## 💰 The Problem
@@ -25,6 +27,17 @@ It uses **semantic understanding** to detect when a new prompt has *the same int
 
 ---
 
+## ✨ What's New in v0.3.0
+
+- 📊 **Prometheus Metrics** - `/metrics` endpoint for observability
+- 🏥 **Health Checks** - Kubernetes-ready liveness/readiness probes
+- 🗃️ **Cache Management** - Clear cache, view stats via API
+- 📝 **Structured Logging** - JSON logs for log aggregation
+- ⚡ **5x Faster** - ANN index for similarity search
+- 🔄 **Graceful Shutdown** - Clean request draining
+
+---
+
 ## 🚀 Quick Start
 
 PromptCache works as a **drop-in replacement** for the OpenAI API.
@@ -38,14 +51,21 @@ version: '3.8'
 
 services:
   prompt-cache:
-    image: messkan/prompt-cache:latest
+    image: messkan/prompt-cache:0.3.0
     ports:
       - "8080:8080"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EMBEDDING_PROVIDER=openai
+      - LOG_LEVEL=info
     volumes:
       - ./badger_data:/root/badger_data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 ```
 
 Then run:
@@ -65,7 +85,20 @@ export OPENAI_API_KEY=your_key_here
 docker run -d -p 8080:8080 \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
   -v prompt_cache_data:/root/badger_data \
-  messkan/prompt-cache:latest
+  messkan/prompt-cache:0.3.0
+```
+
+### Verify Installation
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# View metrics
+curl http://localhost:8080/metrics
+
+# Check stats
+curl http://localhost:8080/v1/stats
 ```
 
 ### Update your Client
