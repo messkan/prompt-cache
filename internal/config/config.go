@@ -40,6 +40,9 @@ type Config struct {
 	ClaudeModel         string
 	ClaudeVerifyModel   string
 	VoyageEmbedModel    string
+
+	// Auth settings
+	AuthToken string
 }
 
 // Load loads configuration from environment variables with sensible defaults
@@ -68,6 +71,9 @@ func Load() *Config {
 
 		// Provider settings
 		EmbeddingProvider: getEnvOrDefault("EMBEDDING_PROVIDER", "openai"),
+
+		// Auth settings
+		AuthToken: getEnvOrDefault("API_AUTH_TOKEN", ""),
 
 		// Model overrides
 		OpenAIEmbedModel:   getEnvOrDefault("OPENAI_EMBED_MODEL", "text-embedding-3-small"),

@@ -2,6 +2,7 @@ package semantic
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"testing"
 )
@@ -26,6 +27,18 @@ func (m *MockProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 str
 
 func (m *MockProvider) ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error) {
 	return m.forwardResponse, m.forwardStatus, m.forwardError
+}
+
+func (m *MockProvider) ForwardStreamingChatCompletion(ctx context.Context, requestBody []byte, w http.ResponseWriter) ([]byte, int, error) {
+	if m.forwardError != nil {
+		return nil, m.forwardStatus, m.forwardError
+	}
+	if w != nil && len(m.forwardResponse) > 0 {
+		_, _ = w.Write([]byte("data: "))
+		_, _ = w.Write(m.forwardResponse)
+		_, _ = w.Write([]byte("\n\ndata: [DONE]\n\n"))
+	}
+	return m.forwardResponse, m.forwardStatus, nil
 }
 
 // MockStorage implements Storage

@@ -3,6 +3,7 @@ package semantic
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -30,6 +31,9 @@ type Provider interface {
 	EmbeddingProvider
 	Verifier
 	ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error)
+	// ForwardStreamingChatCompletion streams SSE events to w and returns a buffered
+	// non-streaming JSON response suitable for caching.
+	ForwardStreamingChatCompletion(ctx context.Context, requestBody []byte, w http.ResponseWriter) ([]byte, int, error)
 }
 
 // Config holds configuration for the semantic engine
@@ -241,6 +245,48 @@ func (se *SemanticEngine) ForwardChatCompletion(ctx context.Context, requestBody
 	provider := se.Provider
 	se.mu.RUnlock()
 	return provider.ForwardChatCompletion(ctx, requestBody)
+}
+
+// ForwardStreamingChatCompletion streams SSE events to w via the current provider.
+// It returns a buffered full JSON response for caching and the HTTP status code.
+func (se *SemanticEngine) ForwardStreamingChatCompletion(ctx context.Context, requestBody []byte, w http.ResponseWriter) ([]byte, int, error) {
+	se.mu.RLock()
+	provider := se.Provider
+	se.mu.RUnlock()
+	return provider.ForwardStreamingChatCompletion(ctx, requestBody, w)
+}
+
+// GetConfig returns the current semantic configuration (thread-safe).
+func (se *SemanticEngine) GetConfig() map[string]interface{} {
+	se.mu.RLock()
+	defer se.mu.RUnlock()
+	return map[string]interface{}{
+		"high_threshold":            se.HighThreshold,
+		"low_threshold":             se.LowThreshold,
+		"enable_gray_zone_verifier": se.EnableGrayZoneVerifier,
+	}
+}
+
+// UpdateThresholds atomically updates the similarity thresholds and optionally the
+// gray-zone verifier toggle. Returns an error if high <= low or values are out of range.
+func (se *SemanticEngine) UpdateThresholds(high, low float32, enableGrayZone *bool) error {
+	if high < 0 || high > 1.0 {
+		return fmt.Errorf("high_threshold must be between 0 and 1.0, got %.4f", high)
+	}
+	if low < 0 || low > 1.0 {
+		return fmt.Errorf("low_threshold must be between 0 and 1.0, got %.4f", low)
+	}
+	if high <= low {
+		return fmt.Errorf("high_threshold (%.4f) must be greater than low_threshold (%.4f)", high, low)
+	}
+	se.mu.Lock()
+	se.HighThreshold = high
+	se.LowThreshold = low
+	if enableGrayZone != nil {
+		se.EnableGrayZoneVerifier = *enableGrayZone
+	}
+	se.mu.Unlock()
+	return nil
 }
 
 func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string, float32, error) {

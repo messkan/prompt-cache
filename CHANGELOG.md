@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-25
+
+### Added
+- **API Authentication**
+  - Bearer-token middleware (`Auth(token)`) using `crypto/subtle.ConstantTimeCompare`
+  - All management endpoints (`/metrics`, `/v1/stats`, `/v1/config`, `/v1/config/provider`, `/v1/cache`, `/v1/cache/:key`, `/v1/cache/warm`) are gated behind the new `protected` route group
+  - New `API_AUTH_TOKEN` env var; when unset, auth is disabled and a startup warning is logged
+  - Inference (`/v1/chat/completions`) and health endpoints remain public
+
+- **Streaming Responses (SSE)**
+  - `/v1/chat/completions` now honors `"stream": true`
+  - New `Provider.ForwardStreamingChatCompletion(ctx, body, w)` interface method, implemented for OpenAI, Mistral, and Claude
+  - Claude's native event stream (`message_start` / `content_block_delta` / `message_stop`) is translated to OpenAI-compatible SSE chunks
+  - Cache-hit responses are synthesized into SSE chunks (role delta → content delta → stop) so streaming clients work transparently
+  - Streaming responses are buffered in parallel and persisted to the cache for future hits
+
+- **Runtime Configuration API**
+  - `GET /v1/config` returns provider, thresholds, gray-zone flag, and cache TTL/size
+  - `PATCH /v1/config` updates `high_threshold`, `low_threshold`, `enable_gray_zone_verifier` atomically
+  - New `SemanticEngine.UpdateThresholds(high, low, *enableGrayZone)` with validation: `0 <= low < high <= 1.0`
+  - New `SemanticEngine.GetConfig()` for thread-safe reads
+
+- **Cache Warming**
+  - New `POST /v1/cache/warm` endpoint accepting `{entries: [{prompt, response}]}`
+  - Computes embeddings, stores responses, and registers entries in the ANN index in one call
+  - Embedding failures roll back the cached response and prompt for that entry
+
+- **Tests**
+  - `internal/middleware/auth_test.go` — Bearer auth (disabled-mode, missing/malformed/wrong/valid token cases)
+  - `internal/semantic/streaming_test.go` — SSE pipe-and-buffer assembly + malformed chunk handling
+  - `internal/semantic/config_test.go` — `UpdateThresholds` validation and `GetConfig` round-trip
+
+### Changed
+- `Provider` interface gained `ForwardStreamingChatCompletion`; existing mocks updated
+- `/v1/config/provider` GET endpoint removed (info now lives at `/v1/config`); POST retained for switching
+- Removed redundant `// Apply middleware` comments and dead code paths
+
+### Fixed
+- Crash risk when synthesizing SSE on cache hit with short cache keys (`actualKey[:8]` panic) — now bounds-checked
+- SSE fallback path on malformed cached responses no longer drops content; emits the cached payload as a single content chunk
+- Streaming provider errors now emit an SSE error event instead of returning silently after headers were written
+- Threshold validation accepts `0` (was previously rejected with confusing message)
+
 ## [0.3.0] - 2026-01-19
 
 ### Added

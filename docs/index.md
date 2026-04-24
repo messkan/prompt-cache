@@ -8,7 +8,7 @@ nav_order: 1
 
 ![PromptCache](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Version](https://img.shields.io/badge/version-0.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.0-blue)
 
 **A smart semantic cache for high-scale GenAI workloads.**
 
@@ -23,15 +23,19 @@ PromptCache is a lightweight middleware that sits between your application and y
 - **Better Scale**: Unlimited throughput without API rate limits
 - **Smart Matching**: Semantic understanding prevents incorrect cache hits
 
-## What's New in v0.3.0
+## What's New in v0.4.0
 
-- 📊 **Prometheus Metrics** - Export hit rates, latency, and request counts
-- 🏥 **Health Checks** - Kubernetes-ready liveness/readiness probes
-- 🗃️ **Cache Management API** - View stats, clear cache, delete entries
-- 📝 **Structured Logging** - JSON logs for easy aggregation
-- ⚡ **ANN Index** - 5x faster similarity search
-- 🔄 **Graceful Shutdown** - Clean request draining
-- 🔁 **Retry Logic** - Automatic retries with exponential backoff
+- 🔐 **API Authentication** - Bearer-token middleware gating all management endpoints (`API_AUTH_TOKEN`)
+- 🌊 **Streaming (SSE)** - Full `stream: true` support across OpenAI, Mistral, and Claude — including streamed cache hits
+- ⚙️ **Runtime Config API** - `GET`/`PATCH /v1/config` for live threshold and gray-zone updates
+- 🔥 **Cache Warming** - `POST /v1/cache/warm` to bulk pre-populate from historical prompt/response pairs
+
+### Previously in v0.3.0
+
+- 📊 Prometheus metrics, structured logging, health checks
+- 🗃️ Cache management API, LRU eviction
+- ⚡ ANN index for 5x faster similarity search
+- 🔄 Graceful shutdown, retry logic
 
 ## Quick Links
 
@@ -60,9 +64,11 @@ This ensures cached responses are semantically correct, not just "close enough".
 
 - ✅ Multiple provider support (OpenAI, Mistral, Claude)
 - ✅ Dynamic provider switching via API
-- ✅ Configurable similarity thresholds
+- ✅ Configurable similarity thresholds (env vars + runtime PATCH)
 - ✅ Gray zone verification control
-- ✅ OpenAI-compatible API
+- ✅ OpenAI-compatible API (including SSE streaming)
+- ✅ Bearer-token authentication for management endpoints
+- ✅ Cache warming from historical data
 - ✅ Docker support
 - ✅ Thread-safe operations
 - ✅ BadgerDB persistence

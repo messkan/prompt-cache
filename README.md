@@ -10,9 +10,10 @@
 ![PromptCache Demo](assets/demo.png)
 
 > [!NOTE]
-> **v0.3.0 is now available!** This release brings production-ready features:
-> Prometheus metrics, structured logging, health checks, graceful shutdown,
-> cache management API, and significant performance improvements.
+> **v0.4.0 is now available!** This release adds Bearer-token authentication
+> for management endpoints, full streaming (SSE) support including streamed
+> cache hits, a runtime configuration API for thresholds, and bulk cache
+> warming for pre-populating from historical prompt/response pairs.
 ---
 
 ## 💰 The Problem
@@ -272,7 +273,75 @@ export ENABLE_GRAY_ZONE_VERIFIER=true  # or false, 0, 1, yes, no
 
 ---
 
+## 🔐 Authentication
+
+All management endpoints (`/metrics`, `/v1/stats`, `/v1/config`, `/v1/config/provider`, `/v1/cache`, `/v1/cache/warm`) are gated by a Bearer token when `API_AUTH_TOKEN` is set. The public inference endpoint (`/v1/chat/completions`) and health checks are never auth-gated.
+
+```bash
+export API_AUTH_TOKEN=your-secret-token
+```
+
+```bash
+curl http://localhost:8080/v1/stats \
+  -H "Authorization: Bearer your-secret-token"
+```
+
+If `API_AUTH_TOKEN` is unset, auth is disabled and a startup warning is logged. Set it for any non-local deployment.
+
+---
+
+## 🌊 Streaming Support
+
+`/v1/chat/completions` now honors `"stream": true` end-to-end:
+
+- **Cache miss**: PromptCache forwards a streaming request to the provider, streams SSE events through to the client, and buffers the assembled response for caching.
+- **Cache hit**: A cached non-streaming response is synthesized into OpenAI-compatible SSE chunks (role delta → content delta → stop) so streaming clients work transparently.
+
+```python
+client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Stream me a poem"}],
+    stream=True,
+)
+```
+
+Works across OpenAI, Mistral, and Claude (Claude's native event stream is translated to OpenAI SSE format).
+
+---
+
 ## 🔌 API Management
+
+### Runtime Configuration
+
+```bash
+# Read current config
+curl http://localhost:8080/v1/config -H "Authorization: Bearer $API_AUTH_TOKEN"
+
+# Update similarity thresholds and gray-zone verifier
+curl -X PATCH http://localhost:8080/v1/config \
+  -H "Authorization: Bearer $API_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"high_threshold": 0.85, "low_threshold": 0.40, "enable_gray_zone_verifier": true}'
+```
+
+Validation: `0 <= low < high <= 1.0`. Invalid values return `400`.
+
+### Cache Warming
+
+Pre-populate the cache from historical prompt/response pairs:
+
+```bash
+curl -X POST http://localhost:8080/v1/cache/warm \
+  -H "Authorization: Bearer $API_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "entries": [
+      {"prompt": "What is Go?", "response": {"id":"...","choices":[{"message":{"role":"assistant","content":"Go is..."}}]}}
+    ]
+  }'
+```
+
+Each entry computes an embedding, stores the response, and registers it in the ANN index. Embedding failures roll back the entry.
 
 ### Dynamic Provider Switching
 
@@ -280,22 +349,13 @@ Change the embedding provider at runtime without restarting the service.
 
 #### Get Current Provider
 
-```bash
-curl http://localhost:8080/v1/config/provider
-```
-
-**Response:**
-```json
-{
-  "provider": "openai",
-  "available_providers": ["openai", "mistral", "claude"]
-}
-```
+Provider info is included in `GET /v1/config` (above). To switch:
 
 #### Switch Provider
 
 ```bash
 curl -X POST http://localhost:8080/v1/config/provider \
+  -H "Authorization: Bearer $API_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"provider": "mistral"}'
 ```
@@ -360,12 +420,12 @@ Built for speed, safety, and reliability:
 * **LRU Eviction**: Automatic cache size management
 * **Request Tracing**: Unique request IDs for distributed tracing
 
-### 🚧 v0.4.0 (Planned)
+### ✔️ v0.4.0 (Released - April 2026)
 
-* **API Authentication**: Token-based auth for cache management endpoints
-* **Configuration API**: Update thresholds and settings via REST endpoints
-* **Streaming Support**: Full streaming response support
-* **Cache Warming**: Pre-populate cache from historical data
+* **API Authentication**: Bearer-token auth gating all management endpoints (`/metrics`, `/v1/stats`, `/v1/config*`, `/v1/cache*`); set `API_AUTH_TOKEN` to enable
+* **Streaming Support**: Full SSE streaming for `/v1/chat/completions` across OpenAI, Mistral, and Claude — including synthesized streams on cache hits
+* **Configuration API**: `GET /v1/config` and `PATCH /v1/config` to read/update similarity thresholds and the gray-zone verifier flag at runtime
+* **Cache Warming**: `POST /v1/cache/warm` to bulk pre-populate cached responses + embeddings from historical prompt/response pairs
 
 ### 🚀 v1.0.0
 

@@ -209,6 +209,16 @@ export CLAUDE_VERIFY_MODEL=claude-3-haiku-20240307        # Default
 
 ---
 
+## API Authentication
+
+```bash
+export API_AUTH_TOKEN=your-secret-token
+```
+
+When set, all management endpoints (`/metrics`, `/v1/stats`, `/v1/config*`, `/v1/cache*`) require an `Authorization: Bearer $API_AUTH_TOKEN` header. The inference endpoint and `/health*` are always public. If unset, auth is disabled and a startup warning is logged — set this for any non-local deployment.
+
+---
+
 ## Provider API Keys
 
 ### OpenAI
@@ -342,8 +352,16 @@ curl -X POST http://localhost:8080/v1/config/provider \
 
 ### Threshold Updates
 
-{: .note }
-> Threshold updates require a service restart. Dynamic threshold updates via API are planned for v0.3.0.
+As of v0.4.0, similarity thresholds and the gray-zone verifier flag can be updated at runtime via `PATCH /v1/config` — no restart required:
+
+```bash
+curl -X PATCH http://localhost:8080/v1/config \
+  -H "Authorization: Bearer $API_AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"high_threshold": 0.85, "low_threshold": 0.40, "enable_gray_zone_verifier": true}'
+```
+
+Validation: `0 <= low_threshold < high_threshold <= 1.0`. Environment variables (`CACHE_HIGH_THRESHOLD`, `CACHE_LOW_THRESHOLD`, `ENABLE_GRAY_ZONE_VERIFIER`) still set the startup defaults.
 
 ---
 

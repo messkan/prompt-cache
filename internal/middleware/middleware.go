@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +11,35 @@ import (
 	"github.com/messkan/PromptCache/internal/logging"
 	"github.com/messkan/PromptCache/internal/metrics"
 )
+
+// Auth validates the Bearer token in the Authorization header.
+// If token is empty, auth is disabled and all requests pass through.
+func Auth(token string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if token == "" {
+			c.Next()
+			return
+		}
+
+		authHeader := c.GetHeader("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "Unauthorized",
+			})
+			return
+		}
+
+		provided := authHeader[len("Bearer "):]
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "Unauthorized",
+			})
+			return
+		}
+
+		c.Next()
+	}
+}
 
 // RequestID adds a unique request ID to each request
 func RequestID() gin.HandlerFunc {
