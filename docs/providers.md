@@ -15,6 +15,7 @@ PromptCache supports multiple AI providers for embeddings and semantic verificat
 | OpenAI | text-embedding-3-small | gpt-4o-mini | $0.02 / $0.15 |
 | Mistral AI | mistral-embed | mistral-small-latest | $0.10 / $0.20 |
 | Claude | voyage-3 (Voyage AI) | claude-3-haiku | $0.10 / $0.25 |
+| MiniMax | MiniMax-M3 | MiniMax-M3 | $0.60 / $2.40 |
 
 ---
 
@@ -135,6 +136,56 @@ Get your API keys:
 
 ---
 
+## MiniMax
+
+### Setup
+
+```bash
+export EMBEDDING_PROVIDER=minimax
+export MINIMAX_API_KEY=your-minimax-api-key
+```
+
+Get your API key from: [platform.minimax.io](https://platform.minimax.io/)
+
+### Regional Endpoints
+
+MiniMax provides two regional endpoints. Set `MINIMAX_BASE_URL` to choose the region:
+
+| Region | Base URL |
+|--------|----------|
+| Global (English) | `https://api.minimax.io/v1` (default) |
+| China | `https://api.minimaxi.com/v1` |
+
+```bash
+# Use the China endpoint
+export MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+```
+
+### Models Used
+
+- **Embeddings**: `MiniMax-M3`
+- **Verification**: `MiniMax-M3`
+
+### Characteristics
+
+**Pros**:
+- OpenAI-compatible chat completions API
+- Supports global and China regional endpoints
+- Multimodal model support (text, image, video)
+- Large context window (up to 1,000,000 tokens)
+
+**Cons**:
+- Higher cost than OpenAI
+- Newer provider ecosystem
+
+### Best For
+
+- Deployments requiring China regional endpoint
+- Multimodal workloads
+- Long-context applications
+
+---
+
 ## Comparing Providers
 
 ### Performance
@@ -146,6 +197,7 @@ Based on benchmarks with 1000 requests:
 | OpenAI | ~1.2s | ~280ms | Excellent |
 | Mistral | ~1.4s | ~290ms | Very Good |
 | Claude | ~1.6s | ~300ms | Excellent |
+| MiniMax | ~1.5s | ~290ms | Very Good |
 
 ### Cost Comparison
 
@@ -202,7 +254,7 @@ curl http://localhost:8080/v1/config/provider
 ```json
 {
   "provider": "openai",
-  "available_providers": ["openai", "mistral", "claude"]
+  "available_providers": ["openai", "mistral", "claude", "minimax"]
 }
 ```
 
@@ -295,7 +347,7 @@ else:
 Error: unsupported provider: xxx
 ```
 
-**Solution**: Use `openai`, `mistral`, or `claude` (case-insensitive)
+**Solution**: Use `openai`, `mistral`, `claude`, or `minimax` (case-insensitive)
 
 ### API Key Missing
 

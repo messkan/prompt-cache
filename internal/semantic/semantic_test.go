@@ -128,10 +128,10 @@ func TestFindSimilar_NoMatch(t *testing.T) {
 
 func TestNewProvider(t *testing.T) {
 	tests := []struct {
-		name          string
-		envValue      string
-		expectedType  string
-		shouldError   bool
+		name         string
+		envValue     string
+		expectedType string
+		shouldError  bool
 	}{
 		{
 			name:         "default to openai",
@@ -155,6 +155,12 @@ func TestNewProvider(t *testing.T) {
 			name:         "claude provider",
 			envValue:     "claude",
 			expectedType: "*semantic.ClaudeProvider",
+			shouldError:  false,
+		},
+		{
+			name:         "minimax provider",
+			envValue:     "minimax",
+			expectedType: "*semantic.MiniMaxProvider",
 			shouldError:  false,
 		},
 		{
@@ -201,66 +207,66 @@ func TestNewProvider(t *testing.T) {
 
 func TestLoadConfig(t *testing.T) {
 	tests := []struct {
-		name                   string
-		highThresholdEnv       string
-		lowThresholdEnv        string
-		grayZoneEnv            string
-		expectedHigh           float32
-		expectedLow            float32
+		name                    string
+		highThresholdEnv        string
+		lowThresholdEnv         string
+		grayZoneEnv             string
+		expectedHigh            float32
+		expectedLow             float32
 		expectedGrayZoneEnabled bool
 	}{
 		{
-			name:                   "default values",
-			highThresholdEnv:       "",
-			lowThresholdEnv:        "",
-			grayZoneEnv:            "",
-			expectedHigh:           0.70,
-			expectedLow:            0.30,
+			name:                    "default values",
+			highThresholdEnv:        "",
+			lowThresholdEnv:         "",
+			grayZoneEnv:             "",
+			expectedHigh:            0.70,
+			expectedLow:             0.30,
 			expectedGrayZoneEnabled: true,
 		},
 		{
-			name:                   "custom thresholds",
-			highThresholdEnv:       "0.92",
-			lowThresholdEnv:        "0.75",
-			grayZoneEnv:            "",
-			expectedHigh:           0.92,
-			expectedLow:            0.75,
+			name:                    "custom thresholds",
+			highThresholdEnv:        "0.92",
+			lowThresholdEnv:         "0.75",
+			grayZoneEnv:             "",
+			expectedHigh:            0.92,
+			expectedLow:             0.75,
 			expectedGrayZoneEnabled: true,
 		},
 		{
-			name:                   "disable gray zone verifier",
-			highThresholdEnv:       "",
-			lowThresholdEnv:        "",
-			grayZoneEnv:            "false",
-			expectedHigh:           0.70,
-			expectedLow:            0.30,
+			name:                    "disable gray zone verifier",
+			highThresholdEnv:        "",
+			lowThresholdEnv:         "",
+			grayZoneEnv:             "false",
+			expectedHigh:            0.70,
+			expectedLow:             0.30,
 			expectedGrayZoneEnabled: false,
 		},
 		{
-			name:                   "gray zone verifier with '1'",
-			highThresholdEnv:       "",
-			lowThresholdEnv:        "",
-			grayZoneEnv:            "1",
-			expectedHigh:           0.70,
-			expectedLow:            0.30,
+			name:                    "gray zone verifier with '1'",
+			highThresholdEnv:        "",
+			lowThresholdEnv:         "",
+			grayZoneEnv:             "1",
+			expectedHigh:            0.70,
+			expectedLow:             0.30,
 			expectedGrayZoneEnabled: true,
 		},
 		{
-			name:                   "invalid threshold values use defaults",
-			highThresholdEnv:       "invalid",
-			lowThresholdEnv:        "2.5",
-			grayZoneEnv:            "",
-			expectedHigh:           0.70,
-			expectedLow:            0.30,
+			name:                    "invalid threshold values use defaults",
+			highThresholdEnv:        "invalid",
+			lowThresholdEnv:         "2.5",
+			grayZoneEnv:             "",
+			expectedHigh:            0.70,
+			expectedLow:             0.30,
 			expectedGrayZoneEnabled: true,
 		},
 		{
-			name:                   "high <= low resets to defaults",
-			highThresholdEnv:       "0.70",
-			lowThresholdEnv:        "0.85",
-			grayZoneEnv:            "",
-			expectedHigh:           0.70,
-			expectedLow:            0.30,
+			name:                    "high <= low resets to defaults",
+			highThresholdEnv:        "0.70",
+			lowThresholdEnv:         "0.85",
+			grayZoneEnv:             "",
+			expectedHigh:            0.70,
+			expectedLow:             0.30,
 			expectedGrayZoneEnabled: true,
 		},
 	}
@@ -325,7 +331,7 @@ func TestFindSimilar_GrayZoneDisabled(t *testing.T) {
 	if key != "" {
 		t.Errorf("Expected empty key (gray zone disabled), got '%s'", key)
 	}
-	
+
 	// Score should still be in gray zone
 	if score < 0.80 || score >= 0.95 {
 		t.Errorf("Expected score in gray zone [0.80, 0.95), got %f", score)
@@ -340,14 +346,14 @@ func TestSetProvider(t *testing.T) {
 		LowThreshold:           0.30,
 		EnableGrayZoneVerifier: true,
 	}
-	
+
 	engine := NewSemanticEngine(provider, store, provider, config)
-	
+
 	// Test initial provider
 	if engine.GetCurrentProvider() != "openai" {
 		t.Errorf("Expected initial provider 'openai', got '%s'", engine.GetCurrentProvider())
 	}
-	
+
 	// Test switching to Mistral
 	err := engine.SetProvider("mistral")
 	if err != nil {
@@ -356,7 +362,7 @@ func TestSetProvider(t *testing.T) {
 	if engine.GetCurrentProvider() != "mistral" {
 		t.Errorf("Expected provider 'mistral', got '%s'", engine.GetCurrentProvider())
 	}
-	
+
 	// Test switching to Claude
 	err = engine.SetProvider("claude")
 	if err != nil {
@@ -365,7 +371,16 @@ func TestSetProvider(t *testing.T) {
 	if engine.GetCurrentProvider() != "claude" {
 		t.Errorf("Expected provider 'claude', got '%s'", engine.GetCurrentProvider())
 	}
-	
+
+	// Test switching to MiniMax
+	err = engine.SetProvider("minimax")
+	if err != nil {
+		t.Fatalf("Failed to switch to minimax: %v", err)
+	}
+	if engine.GetCurrentProvider() != "minimax" {
+		t.Errorf("Expected provider 'minimax', got '%s'", engine.GetCurrentProvider())
+	}
+
 	// Test case insensitive
 	err = engine.SetProvider("OPENAI")
 	if err != nil {
@@ -374,7 +389,7 @@ func TestSetProvider(t *testing.T) {
 	if engine.GetCurrentProvider() != "openai" {
 		t.Errorf("Expected provider 'openai', got '%s'", engine.GetCurrentProvider())
 	}
-	
+
 	// Test invalid provider
 	err = engine.SetProvider("invalid")
 	if err == nil {
@@ -394,13 +409,13 @@ func TestSetProvider_ThreadSafety(t *testing.T) {
 		LowThreshold:           0.30,
 		EnableGrayZoneVerifier: true,
 	}
-	
+
 	engine := NewSemanticEngine(provider, store, provider, config)
-	
+
 	// Test concurrent provider switches
 	done := make(chan bool)
-	providers := []string{"openai", "mistral", "claude"}
-	
+	providers := []string{"openai", "mistral", "claude", "minimax"}
+
 	for i := 0; i < 10; i++ {
 		go func(idx int) {
 			for j := 0; j < 5; j++ {
@@ -411,12 +426,12 @@ func TestSetProvider_ThreadSafety(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all goroutines
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-	
+
 	// Ensure we have a valid provider at the end
 	currentProvider := engine.GetCurrentProvider()
 	validProvider := false
@@ -430,6 +445,3 @@ func TestSetProvider_ThreadSafety(t *testing.T) {
 		t.Errorf("Expected valid provider, got '%s'", currentProvider)
 	}
 }
-
-
-

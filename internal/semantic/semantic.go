@@ -113,7 +113,7 @@ func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *Seman
 	if config == nil {
 		config = LoadConfig()
 	}
-	
+
 	// Detect provider name
 	providerName := "unknown"
 	if val := os.Getenv("EMBEDDING_PROVIDER"); val != "" {
@@ -121,7 +121,7 @@ func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *Seman
 	} else {
 		providerName = "openai" // default
 	}
-	
+
 	se := &SemanticEngine{
 		Provider:               p,
 		Store:                  s,
@@ -179,7 +179,7 @@ func (se *SemanticEngine) AddToIndex(key string, embedding []float32) {
 }
 
 // NewProvider creates an embedding provider based on the EMBEDDING_PROVIDER environment variable
-// Supported providers: openai (default), mistral, claude
+// Supported providers: openai (default), mistral, claude, minimax
 func NewProvider() (Provider, error) {
 	provider := os.Getenv("EMBEDDING_PROVIDER")
 	if provider == "" {
@@ -193,18 +193,20 @@ func NewProvider() (Provider, error) {
 		return NewMistralProvider(), nil
 	case "claude":
 		return NewClaudeProvider(), nil
+	case "minimax":
+		return NewMiniMaxProvider(), nil
 	default:
-		return nil, fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude)", provider)
+		return nil, fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude, minimax)", provider)
 	}
 }
 
 // SetProvider dynamically changes the embedding provider at runtime
 func (se *SemanticEngine) SetProvider(providerName string) error {
 	providerName = strings.ToLower(providerName)
-	
+
 	var newProvider Provider
 	var err error
-	
+
 	switch providerName {
 	case "openai":
 		newProvider = NewOpenAIProvider()
@@ -212,16 +214,18 @@ func (se *SemanticEngine) SetProvider(providerName string) error {
 		newProvider = NewMistralProvider()
 	case "claude":
 		newProvider = NewClaudeProvider()
+	case "minimax":
+		newProvider = NewMiniMaxProvider()
 	default:
-		return fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude)", providerName)
+		return fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude, minimax)", providerName)
 	}
-	
+
 	se.mu.Lock()
 	se.Provider = newProvider
 	se.Verifier = newProvider
 	se.currentProviderName = providerName
 	se.mu.Unlock()
-	
+
 	return err
 }
 
@@ -295,9 +299,9 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 	verifier := se.Verifier
 	useANN := se.useANNIndex && se.annIndex != nil
 	se.mu.RUnlock()
-	
+
 	m := metrics.Get()
-	
+
 	queryEmb, err := provider.Embed(ctx, text)
 	if err != nil {
 		return "", 0, err
@@ -314,7 +318,7 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 			// HNSW returns distance, convert to similarity
 			// For cosine distance: similarity = 1 - distance
 			bestSim = 1.0 - distances[0]
-			
+
 			// Verify with exact cosine similarity for accuracy
 			embBytes, err := se.Store.GetAllEmbeddings(ctx)
 			if err == nil {
@@ -356,7 +360,7 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 
 	// 3. Gray Zone -> Smart Verification (if enabled)
 	m.RecordCacheGrayZone()
-	
+
 	if !se.EnableGrayZoneVerifier {
 		// Gray zone verification disabled, treat as miss
 		m.RecordCacheMiss()

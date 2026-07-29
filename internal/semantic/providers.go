@@ -41,9 +41,9 @@ func pipeSSEAndBuffer(r io.Reader, w http.ResponseWriter) ([]byte, error) {
 	flusher, canFlush := w.(http.Flusher)
 
 	var (
-		fullContent strings.Builder
-		chunkID     string
-		chunkModel  string
+		fullContent  strings.Builder
+		chunkID      string
+		chunkModel   string
 		chunkCreated int64
 	)
 
@@ -136,6 +136,11 @@ type ProviderConfig struct {
 	ClaudeModel       string
 	ClaudeVerifyModel string
 	VoyageEmbedModel  string
+
+	// MiniMax settings
+	MiniMaxBaseURL     string
+	MiniMaxEmbedModel  string
+	MiniMaxVerifyModel string
 }
 
 // DefaultProviderConfig returns default provider configuration
@@ -151,6 +156,9 @@ func DefaultProviderConfig() *ProviderConfig {
 		ClaudeModel:        getEnvOrDefault("CLAUDE_MODEL", "claude-3-opus-20240229"),
 		ClaudeVerifyModel:  getEnvOrDefault("CLAUDE_VERIFY_MODEL", "claude-3-haiku-20240307"),
 		VoyageEmbedModel:   getEnvOrDefault("VOYAGE_EMBED_MODEL", "voyage-3"),
+		MiniMaxBaseURL:     getEnvOrDefault("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
+		MiniMaxEmbedModel:  getEnvOrDefault("MINIMAX_EMBED_MODEL", "MiniMax-M3"),
+		MiniMaxVerifyModel: getEnvOrDefault("MINIMAX_VERIFY_MODEL", "MiniMax-M3"),
 	}
 }
 
@@ -661,11 +669,11 @@ func (p *MistralProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 
 
 // ClaudeProvider implementation
 type ClaudeProvider struct {
-	apiKey       string
-	client       *internalhttp.RetryableClient
-	chatModel    string
-	verifyModel  string
-	voyageModel  string
+	apiKey      string
+	client      *internalhttp.RetryableClient
+	chatModel   string
+	verifyModel string
+	voyageModel string
 }
 
 func NewClaudeProvider() *ClaudeProvider {
@@ -1159,5 +1167,228 @@ func (p *ClaudeProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 s
 	}
 
 	content := strings.TrimSpace(strings.ToUpper(chatResp.Content[0].Text))
+	return content == "YES", nil
+}
+
+// MiniMaxProvider implementation
+type MiniMaxProvider struct {
+	apiKey      string
+	client      *internalhttp.RetryableClient
+	embedModel  string
+	verifyModel string
+	baseURL     string
+}
+
+func NewMiniMaxProvider() *MiniMaxProvider {
+	return NewMiniMaxProviderWithConfig(DefaultProviderConfig())
+}
+
+func NewMiniMaxProviderWithConfig(cfg *ProviderConfig) *MiniMaxProvider {
+	return &MiniMaxProvider{
+		apiKey: os.Getenv("MINIMAX_API_KEY"),
+		client: internalhttp.NewRetryableClient(&internalhttp.ClientConfig{
+			Timeout:       cfg.HTTPTimeout,
+			MaxRetries:    cfg.HTTPMaxRetries,
+			RetryBaseWait: cfg.HTTPRetryBaseWait,
+		}),
+		embedModel:  cfg.MiniMaxEmbedModel,
+		verifyModel: cfg.MiniMaxVerifyModel,
+		baseURL:     cfg.MiniMaxBaseURL,
+	}
+}
+
+func (p *MiniMaxProvider) Embed(ctx context.Context, text string) ([]float32, error) {
+	m := metrics.Get()
+	m.RecordProviderCall()
+
+	reqBody := EmbeddingRequest{
+		Input: text,
+		Model: p.embedModel,
+	}
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		m.RecordProviderError()
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/embeddings", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		m.RecordProviderError()
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		m.RecordProviderError()
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		m.RecordProviderError()
+		return nil, fmt.Errorf("MiniMax API error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var embeddingResp EmbeddingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embeddingResp); err != nil {
+		m.RecordProviderError()
+		return nil, err
+	}
+
+	if len(embeddingResp.Data) == 0 {
+		m.RecordProviderError()
+		return nil, fmt.Errorf("no embedding data returned")
+	}
+
+	// Convert float64 to float32
+	res := make([]float32, len(embeddingResp.Data[0].Embedding))
+	for i, v := range embeddingResp.Data[0].Embedding {
+		res[i] = float32(v)
+	}
+
+	return res, nil
+}
+
+func (p *MiniMaxProvider) ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error) {
+	m := metrics.Get()
+	m.RecordProviderCall()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/chat/completions", bytes.NewBuffer(requestBody))
+	if err != nil {
+		m.RecordProviderError()
+		return nil, 0, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		m.RecordProviderError()
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		m.RecordProviderError()
+		return nil, resp.StatusCode, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		m.RecordProviderError()
+	}
+
+	return respBody, resp.StatusCode, nil
+}
+
+func (p *MiniMaxProvider) ForwardStreamingChatCompletion(ctx context.Context, requestBody []byte, w http.ResponseWriter) ([]byte, int, error) {
+	m := metrics.Get()
+	m.RecordProviderCall()
+
+	// Ensure stream: true in the forwarded request
+	var reqMap map[string]interface{}
+	if err := json.Unmarshal(requestBody, &reqMap); err != nil {
+		m.RecordProviderError()
+		return nil, http.StatusBadRequest, err
+	}
+	reqMap["stream"] = true
+	modifiedBody, err := json.Marshal(reqMap)
+	if err != nil {
+		m.RecordProviderError()
+		return nil, http.StatusInternalServerError, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/chat/completions", bytes.NewBuffer(modifiedBody))
+	if err != nil {
+		m.RecordProviderError()
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		m.RecordProviderError()
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		m.RecordProviderError()
+		return nil, resp.StatusCode, fmt.Errorf("MiniMax API error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	setSSEHeaders(w)
+
+	buffered, err := pipeSSEAndBuffer(resp.Body, w)
+	if err != nil {
+		m.RecordProviderError()
+		return nil, http.StatusOK, err
+	}
+
+	return buffered, http.StatusOK, nil
+}
+
+func (p *MiniMaxProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 string) (bool, error) {
+	m := metrics.Get()
+	m.RecordProviderCall()
+
+	systemPrompt := "You are a semantic judge. Determine if the two user prompts have the exact same intent and meaning. Answer only with 'YES' or 'NO'."
+	userPrompt := fmt.Sprintf("Prompt 1: %s\nPrompt 2: %s", prompt1, prompt2)
+
+	reqBody := VerificationRequest{
+		Model: p.verifyModel,
+		Messages: []Message{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userPrompt},
+		},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		m.RecordProviderError()
+		return false, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		m.RecordProviderError()
+		return false, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		m.RecordProviderError()
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		m.RecordProviderError()
+		return false, fmt.Errorf("MiniMax API error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var verResp VerificationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&verResp); err != nil {
+		m.RecordProviderError()
+		return false, err
+	}
+
+	if len(verResp.Choices) == 0 {
+		m.RecordProviderError()
+		return false, fmt.Errorf("no choices returned")
+	}
+
+	content := strings.TrimSpace(strings.ToUpper(verResp.Choices[0].Message.Content))
 	return content == "YES", nil
 }
