@@ -59,7 +59,7 @@ services:
       - EMBEDDING_PROVIDER=openai
       - LOG_LEVEL=info
     volumes:
-      - ./badger_data:/root/badger_data
+      - ./badger_data:/app/badger_data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
@@ -84,7 +84,7 @@ export OPENAI_API_KEY=your_key_here
 # Run the container
 docker run -d -p 8080:8080 \
   -e OPENAI_API_KEY=$OPENAI_API_KEY \
-  -v prompt_cache_data:/root/badger_data \
+  -v prompt_cache_data:/app/badger_data \
   messkan/prompt-cache:0.3.0
 ```
 

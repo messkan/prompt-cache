@@ -20,5 +20,5 @@ services:
       - CACHE_LOW_THRESHOLD=${CACHE_LOW_THRESHOLD:-0.30}
       - ENABLE_GRAY_ZONE_VERIFIER=${ENABLE_GRAY_ZONE_VERIFIER:-true}
     volumes:
-      - ./badger_data:/root/badger_data
+      - ./badger_data:/app/badger_data
     restart: unless-stopped
