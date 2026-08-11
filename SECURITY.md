@@ -14,4 +14,4 @@ Use GitHub's private vulnerability reporting feature when available. If private 
 
 A useful report includes the affected version or commit, reproduction steps, expected and actual behavior, and the security impact.
 
-For deployment, data-handling, semantic-cache, and multi-tenant guidance, see [`RESPONSIBLE_USE.md`](RESPONSIBLE_USE.md).
+For deployment, data handling, semantic-cache limitations, and multi-tenant guidance, see [`RESPONSIBLE_USE.md`](RESPONSIBLE_USE.md).
