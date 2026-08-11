@@ -333,13 +333,16 @@ For security reporting, supported-version expectations, and disclosure guidance,
 
 For deployment, privacy, retention, provider, semantic-matching, and multi-user considerations, see [RESPONSIBLE_USE.md](RESPONSIBLE_USE.md).
 
+> [!WARNING]
+> The current cache/index architecture is process-wide and does not provide built-in tenant namespaces. Do not treat a shared PromptCache deployment as tenant isolation. Use separate deployments or add a trusted partitioning layer before semantic lookup when tenants must not share cached data.
+
 ---
 
 ## Roadmap
 
 Released features include persistent caching, multiple providers, semantic verification, observability, cache management, authentication, streaming, runtime configuration, and cache warming.
 
-Potential future work includes clustered operation, additional embedding backends, rate limiting/request shaping, and a web dashboard.
+Potential future work includes trusted cache namespacing/partitioning, clustered operation, additional embedding backends, rate limiting/request shaping, and a web dashboard.
 
 ---
 
