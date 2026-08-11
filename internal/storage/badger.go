@@ -2,9 +2,11 @@ package storage
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/messkan/PromptCache/internal/cachecontext"
 )
 
 type BadgerStore struct {
@@ -13,7 +15,7 @@ type BadgerStore struct {
 
 func NewBadgerStore(path string) (*BadgerStore, error) {
 	opts := badger.DefaultOptions(path)
-	opts.Logger = nil // Disable badger's default logging
+	opts.Logger = nil
 	db, err := badger.Open(opts)
 	if err != nil {
 		return nil, err
@@ -21,15 +23,14 @@ func NewBadgerStore(path string) (*BadgerStore, error) {
 	return &BadgerStore{db: db}, nil
 }
 
-// SetWithTTL sets a key-value pair with a time-to-live
 func (s *BadgerStore) SetWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	key = cachecontext.TypedKey(ctx, key)
 	return s.db.Update(func(txn *badger.Txn) error {
 		e := badger.NewEntry([]byte(key), value).WithTTL(ttl)
 		return txn.SetEntry(e)
 	})
 }
 
-// Count returns the total number of keys in the store
 func (s *BadgerStore) Count(ctx context.Context) (int64, error) {
 	var count int64
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -37,7 +38,6 @@ func (s *BadgerStore) Count(ctx context.Context) (int64, error) {
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-
 		for it.Rewind(); it.Valid(); it.Next() {
 			count++
 		}
@@ -46,7 +46,6 @@ func (s *BadgerStore) Count(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-// GetAllKeys returns all keys with the given prefix
 func (s *BadgerStore) GetAllKeys(ctx context.Context, prefix string) ([]string, error) {
 	var keys []string
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -54,7 +53,6 @@ func (s *BadgerStore) GetAllKeys(ctx context.Context, prefix string) ([]string, 
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-
 		prefixBytes := []byte(prefix)
 		for it.Seek(prefixBytes); it.ValidForPrefix(prefixBytes); it.Next() {
 			keys = append(keys, string(it.Item().Key()))
@@ -64,21 +62,16 @@ func (s *BadgerStore) GetAllKeys(ctx context.Context, prefix string) ([]string, 
 	return keys, err
 }
 
-// DeleteByPrefix deletes all keys with the given prefix
 func (s *BadgerStore) DeleteByPrefix(ctx context.Context, prefix string) (int, error) {
 	var keysToDelete [][]byte
-	
-	// First, collect all keys to delete
 	err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
 		defer it.Close()
-
 		prefixBytes := []byte(prefix)
 		for it.Seek(prefixBytes); it.ValidForPrefix(prefixBytes); it.Next() {
-			keyCopy := make([]byte, len(it.Item().Key()))
-			copy(keyCopy, it.Item().Key())
+			keyCopy := append([]byte(nil), it.Item().Key()...)
 			keysToDelete = append(keysToDelete, keyCopy)
 		}
 		return nil
@@ -86,34 +79,20 @@ func (s *BadgerStore) DeleteByPrefix(ctx context.Context, prefix string) (int, e
 	if err != nil {
 		return 0, err
 	}
-
-	// Then delete them
 	for _, key := range keysToDelete {
-		err := s.db.Update(func(txn *badger.Txn) error {
-			return txn.Delete(key)
-		})
-		if err != nil {
+		if err := s.db.Update(func(txn *badger.Txn) error { return txn.Delete(key) }); err != nil {
 			return 0, err
 		}
 	}
-
 	return len(keysToDelete), nil
 }
 
-// Sync flushes all writes to disk
-func (s *BadgerStore) Sync() error {
-	return s.db.Sync()
-}
-
-// RunGC runs garbage collection on the database
-func (s *BadgerStore) RunGC() error {
-	return s.db.RunValueLogGC(0.5)
-}
+func (s *BadgerStore) Sync() error { return s.db.Sync() }
+func (s *BadgerStore) RunGC() error { return s.db.RunValueLogGC(0.5) }
 
 func (s *BadgerStore) Set(ctx context.Context, key string, value []byte) error {
-	return s.db.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte(key), value)
-	})
+	key = cachecontext.TypedKey(ctx, key)
+	return s.db.Update(func(txn *badger.Txn) error { return txn.Set([]byte(key), value) })
 }
 
 func (s *BadgerStore) Get(ctx context.Context, key string) ([]byte, error) {
@@ -121,6 +100,9 @@ func (s *BadgerStore) Get(ctx context.Context, key string) ([]byte, error) {
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(key))
 		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				return nil
+			}
 			return err
 		}
 		valCopy, err = item.ValueCopy(nil)
@@ -130,28 +112,32 @@ func (s *BadgerStore) Get(ctx context.Context, key string) ([]byte, error) {
 }
 
 func (s *BadgerStore) Delete(ctx context.Context, key string) error {
-	return s.db.Update(func(txn *badger.Txn) error {
-		return txn.Delete([]byte(key))
-	})
+	key = cachecontext.TypedKey(ctx, key)
+	return s.db.Update(func(txn *badger.Txn) error { return txn.Delete([]byte(key)) })
 }
 
 func (s *BadgerStore) GetAllEmbeddings(ctx context.Context) (map[string][]byte, error) {
 	results := make(map[string][]byte)
+	prefixText := cachecontext.EmbeddingPrefix(ctx)
+	prefix := []byte(prefixText)
+	defaultNamespace := cachecontext.NamespaceID(ctx) == ""
+
 	err := s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchSize = 10
 		it := txn.NewIterator(opts)
 		defer it.Close()
-
-		prefix := []byte("emb:")
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
-			k := item.Key()
-			err := item.Value(func(v []byte) error {
-				results[string(k)] = append([]byte{}, v...)
+			physicalKey := string(item.Key())
+			if defaultNamespace && cachecontext.IsNamespacedEmbedding(physicalKey) {
+				continue
+			}
+			logicalKey := cachecontext.NormalizeEmbeddingKey(ctx, physicalKey)
+			if err := item.Value(func(v []byte) error {
+				results[logicalKey] = append([]byte{}, v...)
 				return nil
-			})
-			if err != nil {
+			}); err != nil {
 				return err
 			}
 		}
@@ -161,9 +147,10 @@ func (s *BadgerStore) GetAllEmbeddings(ctx context.Context) (map[string][]byte, 
 }
 
 func (s *BadgerStore) GetPrompt(ctx context.Context, key string) (string, error) {
+	physicalKey := cachecontext.TypedKey(ctx, "prompt:"+strings.TrimPrefix(key, "prompt:"))
 	var valCopy []byte
 	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte("prompt:" + key))
+		item, err := txn.Get([]byte(physicalKey))
 		if err != nil {
 			return err
 		}
@@ -173,6 +160,4 @@ func (s *BadgerStore) GetPrompt(ctx context.Context, key string) (string, error)
 	return string(valCopy), err
 }
 
-func (s *BadgerStore) Close() {
-	s.db.Close()
-}
+func (s *BadgerStore) Close() { _ = s.db.Close() }
