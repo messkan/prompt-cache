@@ -23,6 +23,8 @@ Include in your bug report:
 - Environment details (OS, Go version, provider used)
 - Relevant logs or error messages
 
+For suspected security vulnerabilities, follow [`SECURITY.md`](SECURITY.md) instead of posting exploit details publicly.
+
 ### Suggesting Features
 
 Feature requests are welcome! Please:
@@ -63,13 +65,8 @@ make run
 
 2. **Add tests for new features**
    ```bash
-   # Run tests
    go test ./...
-   
-   # Run specific package tests
    go test ./internal/semantic/
-   
-   # Run with coverage
    go test -cover ./...
    ```
 
@@ -78,42 +75,30 @@ make run
    - Add/update code comments
    - Update docs/ if user-facing changes
 
-4. **Run benchmarks** (for performance-related changes)
+4. **Run benchmarks** for performance-related changes
    ```bash
    make benchmark
    ```
 
 #### Code Style
 
-- Use `gofmt` to format your code
+- Use `gofmt` to format Go code
 - Run `go vet` to catch common issues
 - Keep lines under 120 characters when reasonable
 - Write clear commit messages
 
 #### Commit Messages
 
-Follow conventional commits format:
+Conventional commits are encouraged:
 
-```
+```text
 type(scope): brief description
-
-Longer explanation if needed.
-
-Fixes #123
 ```
-
-Types:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `test`: Test additions/changes
-- `refactor`: Code refactoring
-- `perf`: Performance improvements
-- `chore`: Maintenance tasks
 
 Examples:
-```
-feat(semantic): add support for Gemini provider
+
+```text
+feat(semantic): add support for a provider
 fix(cache): resolve race condition in concurrent access
 docs(api): update provider configuration examples
 test(semantic): add benchmark for FindSimilar
@@ -121,23 +106,18 @@ test(semantic): add benchmark for FindSimilar
 
 #### Submitting Your PR
 
-1. **Push your branch** to your fork
-2. **Create a pull request** against `main`
-3. **Fill out the PR template** completely
-4. **Link related issues** using "Fixes #123" or "Relates to #456"
+1. Push your branch to your fork
+2. Create a pull request against `main`
+3. Explain what changed and why
+4. Link related issues when applicable
 
-Your PR should:
-- Pass all tests
-- Include tests for new functionality
-- Update relevant documentation
-- Have a clear description of changes
-- Address reviewer feedback promptly
+Your PR should pass relevant tests, include tests for new behavior, and update user-facing documentation where needed.
 
 ## Development Guidelines
 
 ### Project Structure
 
-```
+```text
 prompt-cache/
 ├── cmd/api/          # Main application entry point
 ├── internal/
@@ -146,77 +126,6 @@ prompt-cache/
 │   └── storage/      # Storage backends
 ├── docs/             # Documentation
 └── scripts/          # Utility scripts
-```
-
-### Adding a New Provider
-
-To add a new embedding/LLM provider:
-
-1. **Create provider file** in `internal/semantic/`:
-   ```go
-   // newprovider_provider.go
-   package semantic
-   
-   type NewProviderProvider struct {
-       apiKey string
-   }
-   
-   func (p *NewProviderProvider) Embed(text string) ([]float64, error) {
-       // Implementation
-   }
-   
-   func (p *NewProviderProvider) CheckSimilarity(prompt1, prompt2 string) (bool, error) {
-       // Implementation
-   }
-   ```
-
-2. **Update provider factory** in `semantic.go`:
-   ```go
-   case "newprovider":
-       return &NewProviderProvider{apiKey: apiKey}, nil
-   ```
-
-3. **Add tests** in `provider_test.go`
-
-4. **Update documentation**:
-   - docs/providers.md
-   - README.md
-   - docker-compose.yml
-
-### Testing Guidelines
-
-- Write unit tests for all new functions
-- Use table-driven tests for multiple scenarios
-- Mock external API calls in tests
-- Aim for >80% code coverage
-- Test edge cases and error conditions
-
-Example test structure:
-```go
-func TestNewFeature(t *testing.T) {
-    tests := []struct {
-        name    string
-        input   string
-        want    string
-        wantErr bool
-    }{
-        {"valid input", "test", "expected", false},
-        {"invalid input", "", "", true},
-    }
-    
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            got, err := NewFeature(tt.input)
-            if (err != nil) != tt.wantErr {
-                t.Errorf("NewFeature() error = %v, wantErr %v", err, tt.wantErr)
-                return
-            }
-            if got != tt.want {
-                t.Errorf("NewFeature() = %v, want %v", got, tt.want)
-            }
-        })
-    }
-}
 ```
 
 ### Performance Considerations
@@ -229,45 +138,21 @@ func TestNewFeature(t *testing.T) {
 
 ## Documentation
 
-### Updating Docs
-
-Documentation lives in `docs/` directory:
-
-```bash
-# Test docs locally
-cd docs
-bundle install
-bundle exec jekyll serve
-
-# Visit http://localhost:4000/prompt-cache
-```
-
-### Documentation Style
-
-- Use clear, concise language
-- Include code examples
-- Add comments for complex logic
-- Keep README.md up to date
-- Update CHANGELOG.md for releases
+Documentation lives in `docs/`. Keep README.md and relevant docs in sync with user-facing behavior.
 
 ## Release Process
 
-Maintainers handle releases, but contributors should:
-
-1. Update CHANGELOG.md with changes
-2. Update version numbers if applicable
-3. Ensure all tests pass
-4. Update documentation
+Maintainers handle releases. Before a release, ensure relevant tests pass and documentation/changelog entries are current.
 
 ## Getting Help
 
-- **Questions?** Open a discussion or issue
-- **Stuck?** Ask for help in your PR
-- **Ideas?** We love to hear them!
+- Open a discussion or issue for general questions
+- Ask for help in your pull request when blocked
+- Use `SECURITY.md` for vulnerability reporting
 
-## License
+## License of Contributions
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By submitting a contribution to this repository, you agree that the contribution is provided under the repository's MIT License. Do not submit code, documentation, assets, or other material that you do not have the right to contribute under those terms.
 
 ## Thank You!
 
