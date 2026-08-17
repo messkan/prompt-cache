@@ -290,7 +290,34 @@ Content-Type: application/json
 | model | string | Yes | Model name (passed to provider) |
 | messages | array | Yes | Array of message objects |
 | messages[].role | string | Yes | Message role (system, user, assistant) |
-| messages[].content | string | Yes | Message content |
+| messages[].content | string \| array | Yes | Message content, either a plain string or an array of typed content parts |
+
+**Multimodal Content Parts**
+
+`messages[].content` also accepts an array of typed parts, so requests that mix
+text with image or video inputs are forwarded to the provider instead of being
+rejected:
+
+```json
+{
+  "model": "your-model",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "What happens in this clip?"},
+        {"type": "image_url", "image_url": {"url": "https://example.com/frame.png"}},
+        {"type": "video_url", "video_url": {"url": "https://example.com/clip.mp4"}}
+      ]
+    }
+  ]
+}
+```
+
+The cache key and the embedding are built from the text parts plus a short
+digest of the attached media references, so two requests that share the same
+text but reference different media are cached separately. Sending `content` as a
+plain string keeps the previous behaviour and the previous cache keys.
 
 **Response (200 OK)**
 ```json
