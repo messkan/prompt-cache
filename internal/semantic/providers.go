@@ -262,8 +262,9 @@ func (p *OpenAIProvider) Embed(ctx context.Context, text string) ([]float32, err
 }
 
 type VerificationRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
+	Model    string            `json:"model"`
+	Messages []Message         `json:"messages"`
+	Thinking map[string]string `json:"thinking,omitempty"`
 }
 
 type Message struct {
@@ -1343,7 +1344,8 @@ func (p *MiniMaxProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 
 	userPrompt := fmt.Sprintf("Prompt 1: %s\nPrompt 2: %s", prompt1, prompt2)
 
 	reqBody := VerificationRequest{
-		Model: p.verifyModel,
+		Model:    p.verifyModel,
+		Thinking: map[string]string{"type": "disabled"},
 		Messages: []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
