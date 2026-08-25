@@ -16,9 +16,11 @@ import (
 type MockRoundTripper struct {
 	Response *http.Response
 	Err      error
+	Request  *http.Request
 }
 
 func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	m.Request = req
 	if m.Err != nil {
 		return nil, m.Err
 	}
@@ -32,6 +34,11 @@ func newMockClient(response *http.Response) *internalhttp.RetryableClient {
 			Response: response,
 		},
 	})
+}
+
+func newCapturingMockClient(response *http.Response) (*internalhttp.RetryableClient, *MockRoundTripper) {
+	transport := &MockRoundTripper{Response: response}
+	return internalhttp.NewRetryableClientWithHTTPClient(&http.Client{Transport: transport}), transport
 }
 
 func TestMistralProvider_Embed(t *testing.T) {
@@ -468,6 +475,47 @@ func TestMiniMaxProvider_CheckSimilarity_Match(t *testing.T) {
 
 	if !match {
 		t.Errorf("Expected match=true, got false")
+	}
+}
+
+func TestMiniMaxProvider_CheckSimilarity_DisablesThinking(t *testing.T) {
+	mockResponse := VerificationResponse{
+		Choices: []struct {
+			Message Message `json:"message"`
+		}{
+			{Message: Message{Role: "assistant", Content: "YES"}},
+		},
+	}
+	jsonBytes, _ := json.Marshal(mockResponse)
+
+	client, transport := newCapturingMockClient(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+	})
+	provider := &MiniMaxProvider{
+		apiKey:      "test-key",
+		embedModel:  "MiniMax-M3",
+		verifyModel: "MiniMax-M3",
+		baseURL:     "https://api.minimax.io/v1",
+		client:      client,
+	}
+
+	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
+	if err != nil {
+		t.Fatalf("CheckSimilarity failed: %v", err)
+	}
+	if !match {
+		t.Fatal("expected match=true")
+	}
+	if transport.Request == nil {
+		t.Fatal("expected a request")
+	}
+	var requestBody VerificationRequest
+	if err := json.NewDecoder(transport.Request.Body).Decode(&requestBody); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	if requestBody.Thinking["type"] != "disabled" {
+		t.Fatalf("expected MiniMax thinking to be disabled, got %#v", requestBody.Thinking)
 	}
 }
 
