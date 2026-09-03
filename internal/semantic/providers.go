@@ -1180,6 +1180,13 @@ type MiniMaxProvider struct {
 	baseURL     string
 }
 
+type miniMaxAPIResponse struct {
+	BaseResp struct {
+		StatusCode int    `json:"status_code"`
+		StatusMsg  string `json:"status_msg"`
+	} `json:"base_resp"`
+}
+
 func NewMiniMaxProvider() *MiniMaxProvider {
 	return NewMiniMaxProviderWithConfig(DefaultProviderConfig())
 }
@@ -1282,6 +1289,13 @@ func (p *MiniMaxProvider) ForwardChatCompletion(ctx context.Context, requestBody
 
 	if resp.StatusCode != http.StatusOK {
 		m.RecordProviderError()
+		return respBody, resp.StatusCode, nil
+	}
+
+	var apiResp miniMaxAPIResponse
+	if err := json.Unmarshal(respBody, &apiResp); err == nil && apiResp.BaseResp.StatusCode != 0 {
+		m.RecordProviderError()
+		return respBody, http.StatusBadGateway, nil
 	}
 
 	return respBody, resp.StatusCode, nil

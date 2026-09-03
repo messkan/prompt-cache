@@ -552,7 +552,7 @@ func TestMiniMaxProvider_CheckSimilarity_NoMatch(t *testing.T) {
 }
 
 func TestMiniMaxProvider_ForwardChatCompletion(t *testing.T) {
-	mockBody := []byte(`{"id":"test","object":"chat.completion","choices":[]}`)
+	mockBody := []byte(`{"id":"test","object":"chat.completion","choices":[],"base_resp":{"status_code":0,"status_msg":""}}`)
 
 	provider := &MiniMaxProvider{
 		apiKey:      "test-key",
@@ -574,5 +574,31 @@ func TestMiniMaxProvider_ForwardChatCompletion(t *testing.T) {
 	}
 	if string(respBody) != string(mockBody) {
 		t.Errorf("Expected response body to match, got %s", string(respBody))
+	}
+}
+
+func TestMiniMaxProvider_ForwardChatCompletion_LogicalAPIError(t *testing.T) {
+	mockBody := []byte(`{"choices":[],"base_resp":{"status_code":1002,"status_msg":"rate limit"}}`)
+
+	provider := &MiniMaxProvider{
+		apiKey:      "test-key",
+		embedModel:  "MiniMax-M3",
+		verifyModel: "MiniMax-M3",
+		baseURL:     "https://api.minimax.io/v1",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(mockBody)),
+		}),
+	}
+
+	respBody, status, err := provider.ForwardChatCompletion(context.Background(), mockBody)
+	if err != nil {
+		t.Fatalf("ForwardChatCompletion failed: %v", err)
+	}
+	if status != http.StatusBadGateway {
+		t.Fatalf("expected status %d, got %d", http.StatusBadGateway, status)
+	}
+	if string(respBody) != string(mockBody) {
+		t.Fatalf("expected response body to match, got %s", string(respBody))
 	}
 }
