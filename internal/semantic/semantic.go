@@ -159,6 +159,8 @@ func (se *SemanticEngine) AddToIndex(key string, embedding []float32) {
 	metrics.Get().SetStoredVectors(uint64(len(stored)))
 }
 
+// NewProvider creates an embedding provider based on the EMBEDDING_PROVIDER environment variable
+// Supported providers: openai (default), mistral, claude, minimax
 func NewProvider() (Provider, error) {
 	provider := os.Getenv("EMBEDDING_PROVIDER")
 	if provider == "" {
@@ -171,8 +173,10 @@ func NewProvider() (Provider, error) {
 		return NewMistralProvider(), nil
 	case "claude":
 		return NewClaudeProvider(), nil
+	case "minimax":
+		return NewMiniMaxProvider(), nil
 	default:
-		return nil, fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude)", provider)
+		return nil, fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude, minimax)", provider)
 	}
 }
 
@@ -186,8 +190,10 @@ func (se *SemanticEngine) SetProvider(providerName string) error {
 		newProvider = NewMistralProvider()
 	case "claude":
 		newProvider = NewClaudeProvider()
+	case "minimax":
+		newProvider = NewMiniMaxProvider()
 	default:
-		return fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude)", providerName)
+		return fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude, minimax)", providerName)
 	}
 	se.mu.Lock()
 	se.Provider = newProvider

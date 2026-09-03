@@ -16,9 +16,11 @@ import (
 type MockRoundTripper struct {
 	Response *http.Response
 	Err      error
+	Request  *http.Request
 }
 
 func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	m.Request = req
 	if m.Err != nil {
 		return nil, m.Err
 	}
@@ -32,6 +34,11 @@ func newMockClient(response *http.Response) *internalhttp.RetryableClient {
 			Response: response,
 		},
 	})
+}
+
+func newCapturingMockClient(response *http.Response) (*internalhttp.RetryableClient, *MockRoundTripper) {
+	transport := &MockRoundTripper{Response: response}
+	return internalhttp.NewRetryableClientWithHTTPClient(&http.Client{Transport: transport}), transport
 }
 
 func TestMistralProvider_Embed(t *testing.T) {
@@ -173,7 +180,7 @@ func TestClaudeProvider_Embed(t *testing.T) {
 func TestClaudeProvider_Embed_NoVoyageKey(t *testing.T) {
 	// Ensure VOYAGE_API_KEY is not set
 	t.Setenv("VOYAGE_API_KEY", "")
-	
+
 	provider := &ClaudeProvider{
 		apiKey:      "test-key",
 		chatModel:   "claude-3-opus-20240229",
@@ -400,5 +407,198 @@ func TestCheckSimilarity_CaseInsensitive(t *testing.T) {
 				t.Errorf("For content %q: got match=%v, want %v", tc.content, match, tc.want)
 			}
 		})
+	}
+}
+
+func TestMiniMaxProvider_Embed(t *testing.T) {
+	mockResponse := EmbeddingResponse{
+		Data: []struct {
+			Embedding []float64 `json:"embedding"`
+		}{
+			{Embedding: []float64{0.2, 0.3, 0.4, 0.5}},
+		},
+	}
+
+	jsonBytes, _ := json.Marshal(mockResponse)
+
+	provider := &MiniMaxProvider{
+		apiKey:      "test-key",
+		embedModel:  "MiniMax-M3",
+		verifyModel: "MiniMax-M3",
+		baseURL:     "https://api.minimax.io/v1",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
+	}
+
+	embedding, err := provider.Embed(context.Background(), "test text")
+	if err != nil {
+		t.Fatalf("Embed failed: %v", err)
+	}
+
+	if len(embedding) != 4 {
+		t.Errorf("Expected 4 dimensions, got %d", len(embedding))
+	}
+
+	if embedding[0] != 0.2 {
+		t.Errorf("Expected first value 0.2, got %f", embedding[0])
+	}
+}
+
+func TestMiniMaxProvider_CheckSimilarity_Match(t *testing.T) {
+	mockResponse := VerificationResponse{
+		Choices: []struct {
+			Message Message `json:"message"`
+		}{
+			{Message: Message{Role: "assistant", Content: "YES"}},
+		},
+	}
+
+	jsonBytes, _ := json.Marshal(mockResponse)
+
+	provider := &MiniMaxProvider{
+		apiKey:      "test-key",
+		embedModel:  "MiniMax-M3",
+		verifyModel: "MiniMax-M3",
+		baseURL:     "https://api.minimax.io/v1",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
+	}
+
+	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
+	if err != nil {
+		t.Fatalf("CheckSimilarity failed: %v", err)
+	}
+
+	if !match {
+		t.Errorf("Expected match=true, got false")
+	}
+}
+
+func TestMiniMaxProvider_CheckSimilarity_DisablesThinking(t *testing.T) {
+	mockResponse := VerificationResponse{
+		Choices: []struct {
+			Message Message `json:"message"`
+		}{
+			{Message: Message{Role: "assistant", Content: "YES"}},
+		},
+	}
+	jsonBytes, _ := json.Marshal(mockResponse)
+
+	client, transport := newCapturingMockClient(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+	})
+	provider := &MiniMaxProvider{
+		apiKey:      "test-key",
+		embedModel:  "MiniMax-M3",
+		verifyModel: "MiniMax-M3",
+		baseURL:     "https://api.minimax.io/v1",
+		client:      client,
+	}
+
+	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
+	if err != nil {
+		t.Fatalf("CheckSimilarity failed: %v", err)
+	}
+	if !match {
+		t.Fatal("expected match=true")
+	}
+	if transport.Request == nil {
+		t.Fatal("expected a request")
+	}
+	var requestBody VerificationRequest
+	if err := json.NewDecoder(transport.Request.Body).Decode(&requestBody); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	if requestBody.Thinking["type"] != "disabled" {
+		t.Fatalf("expected MiniMax thinking to be disabled, got %#v", requestBody.Thinking)
+	}
+}
+
+func TestMiniMaxProvider_CheckSimilarity_NoMatch(t *testing.T) {
+	mockResponse := VerificationResponse{
+		Choices: []struct {
+			Message Message `json:"message"`
+		}{
+			{Message: Message{Role: "assistant", Content: "NO"}},
+		},
+	}
+
+	jsonBytes, _ := json.Marshal(mockResponse)
+
+	provider := &MiniMaxProvider{
+		apiKey:      "test-key",
+		embedModel:  "MiniMax-M3",
+		verifyModel: "MiniMax-M3",
+		baseURL:     "https://api.minimax.io/v1",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
+		}),
+	}
+
+	match, err := provider.CheckSimilarity(context.Background(), "prompt1", "prompt2")
+	if err != nil {
+		t.Fatalf("CheckSimilarity failed: %v", err)
+	}
+
+	if match {
+		t.Errorf("Expected match=false, got true")
+	}
+}
+
+func TestMiniMaxProvider_ForwardChatCompletion(t *testing.T) {
+	mockBody := []byte(`{"id":"test","object":"chat.completion","choices":[],"base_resp":{"status_code":0,"status_msg":""}}`)
+
+	provider := &MiniMaxProvider{
+		apiKey:      "test-key",
+		embedModel:  "MiniMax-M3",
+		verifyModel: "MiniMax-M3",
+		baseURL:     "https://api.minimax.io/v1",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(mockBody)),
+		}),
+	}
+
+	respBody, status, err := provider.ForwardChatCompletion(context.Background(), mockBody)
+	if err != nil {
+		t.Fatalf("ForwardChatCompletion failed: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", status)
+	}
+	if string(respBody) != string(mockBody) {
+		t.Errorf("Expected response body to match, got %s", string(respBody))
+	}
+}
+
+func TestMiniMaxProvider_ForwardChatCompletion_LogicalAPIError(t *testing.T) {
+	mockBody := []byte(`{"choices":[],"base_resp":{"status_code":1002,"status_msg":"rate limit"}}`)
+
+	provider := &MiniMaxProvider{
+		apiKey:      "test-key",
+		embedModel:  "MiniMax-M3",
+		verifyModel: "MiniMax-M3",
+		baseURL:     "https://api.minimax.io/v1",
+		client: newMockClient(&http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(bytes.NewReader(mockBody)),
+		}),
+	}
+
+	respBody, status, err := provider.ForwardChatCompletion(context.Background(), mockBody)
+	if err != nil {
+		t.Fatalf("ForwardChatCompletion failed: %v", err)
+	}
+	if status != http.StatusBadGateway {
+		t.Fatalf("expected status %d, got %d", http.StatusBadGateway, status)
+	}
+	if string(respBody) != string(mockBody) {
+		t.Fatalf("expected response body to match, got %s", string(respBody))
 	}
 }
