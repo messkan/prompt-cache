@@ -30,8 +30,8 @@ type ChatCompletionRequest struct {
 }
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string         `json:"role"`
+	Content MessageContent `json:"content"`
 }
 
 func main() {
@@ -157,7 +157,7 @@ func main() {
 		prompt := ""
 		for i := len(req.Messages) - 1; i >= 0; i-- {
 			if req.Messages[i].Role == "user" {
-				prompt = req.Messages[i].Content
+				prompt = req.Messages[i].Content.CacheText()
 				break
 			}
 		}

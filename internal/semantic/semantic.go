@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/messkan/PromptCache/internal/ann"
+	"github.com/messkan/PromptCache/internal/cachecontext"
 	"github.com/messkan/PromptCache/internal/metrics"
 )
 
@@ -26,72 +27,55 @@ type Verifier interface {
 	CheckSimilarity(ctx context.Context, prompt1, prompt2 string) (bool, error)
 }
 
-// Provider combines EmbeddingProvider and Verifier interfaces
 type Provider interface {
 	EmbeddingProvider
 	Verifier
 	ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error)
-	// ForwardStreamingChatCompletion streams SSE events to w and returns a buffered
-	// non-streaming JSON response suitable for caching.
 	ForwardStreamingChatCompletion(ctx context.Context, requestBody []byte, w http.ResponseWriter) ([]byte, int, error)
 }
 
-// Config holds configuration for the semantic engine
 type Config struct {
 	HighThreshold          float32
 	LowThreshold           float32
 	EnableGrayZoneVerifier bool
-	EmbeddingDimension     int  // Dimension of embeddings (e.g., 1536 for OpenAI, 1024 for Voyage)
-	UseANNIndex            bool // Whether to use ANN index for similarity search
+	EmbeddingDimension     int
+	UseANNIndex            bool
 }
 
-// LoadConfig loads configuration from environment variables with sensible defaults
 func LoadConfig() *Config {
 	config := &Config{
-		HighThreshold:          0.70, // Default: 70% similarity for direct cache hit
-		LowThreshold:           0.30, // Default: below 30% is a clear miss
-		EnableGrayZoneVerifier: true, // Default: enable smart verification
-		EmbeddingDimension:     1536, // Default: OpenAI text-embedding-3-small
-		UseANNIndex:            true, // Default: use ANN index
+		HighThreshold:          0.70,
+		LowThreshold:           0.30,
+		EnableGrayZoneVerifier: true,
+		EmbeddingDimension:     1536,
+		UseANNIndex:            true,
 	}
 
-	// Load high threshold
 	if val := os.Getenv("CACHE_HIGH_THRESHOLD"); val != "" {
 		if f, err := strconv.ParseFloat(val, 32); err == nil && f > 0 && f <= 1.0 {
 			config.HighThreshold = float32(f)
 		}
 	}
-
-	// Load low threshold
 	if val := os.Getenv("CACHE_LOW_THRESHOLD"); val != "" {
 		if f, err := strconv.ParseFloat(val, 32); err == nil && f > 0 && f <= 1.0 {
 			config.LowThreshold = float32(f)
 		}
 	}
-
-	// Load gray zone verifier setting
 	if val := os.Getenv("ENABLE_GRAY_ZONE_VERIFIER"); val != "" {
 		config.EnableGrayZoneVerifier = val == "true" || val == "1" || val == "yes"
 	}
-
-	// Load embedding dimension
 	if val := os.Getenv("EMBEDDING_DIMENSION"); val != "" {
 		if dim, err := strconv.Atoi(val); err == nil && dim > 0 {
 			config.EmbeddingDimension = dim
 		}
 	}
-
-	// Load ANN index setting
 	if val := os.Getenv("USE_ANN_INDEX"); val != "" {
 		config.UseANNIndex = val == "true" || val == "1" || val == "yes"
 	}
-
-	// Ensure high threshold is greater than low threshold
 	if config.HighThreshold <= config.LowThreshold {
 		config.HighThreshold = 0.70
 		config.LowThreshold = 0.30
 	}
-
 	return config
 }
 
@@ -102,11 +86,11 @@ type SemanticEngine struct {
 	HighThreshold          float32
 	LowThreshold           float32
 	EnableGrayZoneVerifier bool
-	mu                     sync.RWMutex // Protects Provider and Verifier
-	currentProviderName    string       // Tracks the current provider name
-	annIndex               *ann.Index   // ANN index for fast similarity search
-	useANNIndex            bool         // Whether to use ANN index
-	embeddingDimension     int          // Dimension of embeddings
+	mu                     sync.RWMutex
+	currentProviderName    string
+	annIndex               *ann.Index
+	useANNIndex            bool
+	embeddingDimension     int
 }
 
 func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *SemanticEngine {
@@ -114,12 +98,9 @@ func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *Seman
 		config = LoadConfig()
 	}
 
-	// Detect provider name
-	providerName := "unknown"
+	providerName := "openai"
 	if val := os.Getenv("EMBEDDING_PROVIDER"); val != "" {
 		providerName = strings.ToLower(val)
-	} else {
-		providerName = "openai" // default
 	}
 
 	se := &SemanticEngine{
@@ -134,48 +115,48 @@ func NewSemanticEngine(p Provider, s Storage, v Verifier, config *Config) *Seman
 		embeddingDimension:     config.EmbeddingDimension,
 	}
 
-	// Initialize ANN index if enabled
 	if config.UseANNIndex {
 		se.annIndex = ann.New(config.EmbeddingDimension)
-		// Load existing embeddings into index
 		go se.rebuildANNIndex()
 	}
-
 	return se
 }
 
-// rebuildANNIndex loads all existing embeddings into the ANN index
+// rebuildANNIndex indexes only the legacy/default partition. Explicit cache
+// namespaces use a filtered linear scan so ANN candidates can never cross a
+// partition boundary.
 func (se *SemanticEngine) rebuildANNIndex() {
 	if se.annIndex == nil {
 		return
 	}
-
-	ctx := context.Background()
-	stored, err := se.Store.GetAllEmbeddings(ctx)
+	stored, err := se.Store.GetAllEmbeddings(context.Background())
 	if err != nil {
 		return
 	}
-
 	count := 0
 	for key, embBytes := range stored {
-		embVec := BytesToFloat32(embBytes)
-		se.annIndex.Add(key, embVec)
+		se.annIndex.Add(key, BytesToFloat32(embBytes))
 		count++
 	}
-
-	m := metrics.Get()
-	m.SetStoredVectors(uint64(count))
+	metrics.Get().SetStoredVectors(uint64(count))
 }
 
-// AddToIndex adds an embedding to the ANN index
+// AddToIndex adds only default-partition embeddings to the ANN index. A
+// namespaced write is hidden from a background/default storage view and is
+// therefore deliberately skipped.
 func (se *SemanticEngine) AddToIndex(key string, embedding []float32) {
-	if se.annIndex != nil {
-		se.annIndex.Add(key, embedding)
-		m := metrics.Get()
-		// Increment stored vectors count
-		stored, _ := se.Store.GetAllEmbeddings(context.Background())
-		m.SetStoredVectors(uint64(len(stored)))
+	if se.annIndex == nil {
+		return
 	}
+	stored, err := se.Store.GetAllEmbeddings(context.Background())
+	if err != nil {
+		return
+	}
+	if _, ok := stored[key]; !ok {
+		return
+	}
+	se.annIndex.Add(key, embedding)
+	metrics.Get().SetStoredVectors(uint64(len(stored)))
 }
 
 // NewProvider creates an embedding provider based on the EMBEDDING_PROVIDER environment variable
@@ -185,7 +166,6 @@ func NewProvider() (Provider, error) {
 	if provider == "" {
 		provider = "openai"
 	}
-
 	switch strings.ToLower(provider) {
 	case "openai":
 		return NewOpenAIProvider(), nil
@@ -200,13 +180,9 @@ func NewProvider() (Provider, error) {
 	}
 }
 
-// SetProvider dynamically changes the embedding provider at runtime
 func (se *SemanticEngine) SetProvider(providerName string) error {
 	providerName = strings.ToLower(providerName)
-
 	var newProvider Provider
-	var err error
-
 	switch providerName {
 	case "openai":
 		newProvider = NewOpenAIProvider()
@@ -219,31 +195,26 @@ func (se *SemanticEngine) SetProvider(providerName string) error {
 	default:
 		return fmt.Errorf("unsupported provider: %s (supported: openai, mistral, claude, minimax)", providerName)
 	}
-
 	se.mu.Lock()
 	se.Provider = newProvider
 	se.Verifier = newProvider
 	se.currentProviderName = providerName
 	se.mu.Unlock()
-
-	return err
+	return nil
 }
 
-// GetCurrentProvider returns the name of the currently active provider
 func (se *SemanticEngine) GetCurrentProvider() string {
 	se.mu.RLock()
 	defer se.mu.RUnlock()
 	return se.currentProviderName
 }
 
-// GetProvider returns the current provider instance (thread-safe)
 func (se *SemanticEngine) GetProvider() Provider {
 	se.mu.RLock()
 	defer se.mu.RUnlock()
 	return se.Provider
 }
 
-// ForwardChatCompletion forwards the request to the current provider
 func (se *SemanticEngine) ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error) {
 	se.mu.RLock()
 	provider := se.Provider
@@ -251,8 +222,6 @@ func (se *SemanticEngine) ForwardChatCompletion(ctx context.Context, requestBody
 	return provider.ForwardChatCompletion(ctx, requestBody)
 }
 
-// ForwardStreamingChatCompletion streams SSE events to w via the current provider.
-// It returns a buffered full JSON response for caching and the HTTP status code.
 func (se *SemanticEngine) ForwardStreamingChatCompletion(ctx context.Context, requestBody []byte, w http.ResponseWriter) ([]byte, int, error) {
 	se.mu.RLock()
 	provider := se.Provider
@@ -260,7 +229,6 @@ func (se *SemanticEngine) ForwardStreamingChatCompletion(ctx context.Context, re
 	return provider.ForwardStreamingChatCompletion(ctx, requestBody, w)
 }
 
-// GetConfig returns the current semantic configuration (thread-safe).
 func (se *SemanticEngine) GetConfig() map[string]interface{} {
 	se.mu.RLock()
 	defer se.mu.RUnlock()
@@ -271,8 +239,6 @@ func (se *SemanticEngine) GetConfig() map[string]interface{} {
 	}
 }
 
-// UpdateThresholds atomically updates the similarity thresholds and optionally the
-// gray-zone verifier toggle. Returns an error if high <= low or values are out of range.
 func (se *SemanticEngine) UpdateThresholds(high, low float32, enableGrayZone *bool) error {
 	if high < 0 || high > 1.0 {
 		return fmt.Errorf("high_threshold must be between 0 and 1.0, got %.4f", high)
@@ -297,11 +263,12 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 	se.mu.RLock()
 	provider := se.Provider
 	verifier := se.Verifier
-	useANN := se.useANNIndex && se.annIndex != nil
+	// The ANN index intentionally contains only the default partition. Explicit
+	// namespaces must search the storage view already filtered to that namespace.
+	useANN := se.useANNIndex && se.annIndex != nil && cachecontext.NamespaceID(ctx) == ""
 	se.mu.RUnlock()
 
 	m := metrics.Get()
-
 	queryEmb, err := provider.Embed(ctx, text)
 	if err != nil {
 		return "", 0, err
@@ -311,34 +278,27 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 	var bestSim float32
 
 	if useANN {
-		// Use ANN index for O(log n) similarity search
 		keys, distances := se.annIndex.Search(queryEmb, 1)
 		if len(keys) > 0 {
 			bestKey = keys[0]
-			// HNSW returns distance, convert to similarity
-			// For cosine distance: similarity = 1 - distance
 			bestSim = 1.0 - distances[0]
-
-			// Verify with exact cosine similarity for accuracy
 			embBytes, err := se.Store.GetAllEmbeddings(ctx)
 			if err == nil {
 				if emb, ok := embBytes[bestKey]; ok {
-					embVec := BytesToFloat32(emb)
-					bestSim = CosineSimilarity(queryEmb, embVec)
+					bestSim = CosineSimilarity(queryEmb, BytesToFloat32(emb))
+				} else {
+					bestKey = ""
+					bestSim = 0
 				}
 			}
 		}
 	} else {
-		// Fallback to linear scan
 		stored, err := se.Store.GetAllEmbeddings(ctx)
 		if err != nil {
 			return "", 0, err
 		}
-
 		for key, embBytes := range stored {
-			embVec := BytesToFloat32(embBytes)
-			sim := CosineSimilarity(queryEmb, embVec)
-
+			sim := CosineSimilarity(queryEmb, BytesToFloat32(embBytes))
 			if sim > bestSim {
 				bestSim = sim
 				bestKey = key
@@ -346,33 +306,24 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 		}
 	}
 
-	// 1. Clear Match
 	if bestSim >= se.HighThreshold {
 		m.RecordCacheHit()
 		return bestKey, bestSim, nil
 	}
-
-	// 2. Clear Mismatch
 	if bestSim < se.LowThreshold {
 		m.RecordCacheMiss()
 		return "", bestSim, nil
 	}
 
-	// 3. Gray Zone -> Smart Verification (if enabled)
 	m.RecordCacheGrayZone()
-
 	if !se.EnableGrayZoneVerifier {
-		// Gray zone verification disabled, treat as miss
 		m.RecordCacheMiss()
 		return "", bestSim, nil
 	}
 
-	// The key in storage has "emb:" prefix, we need to strip it to get the hash
 	hashKey := strings.TrimPrefix(bestKey, "emb:")
-
 	originalPrompt, err := se.Store.GetPrompt(ctx, hashKey)
 	if err != nil {
-		// If we can't find the prompt, we can't verify, so we assume miss to be safe
 		m.RecordCacheMiss()
 		return "", bestSim, nil
 	}
@@ -382,12 +333,10 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 		m.RecordCacheMiss()
 		return "", bestSim, err
 	}
-
 	if isMatch {
 		m.RecordCacheHit()
 		return bestKey, bestSim, nil
 	}
-
 	m.RecordCacheMiss()
 	return "", bestSim, nil
 }

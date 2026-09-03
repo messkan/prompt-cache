@@ -23,6 +23,8 @@ Include in your bug report:
 - Environment details (OS, Go version, provider used)
 - Relevant logs or error messages
 
+For suspected security vulnerabilities, follow [`SECURITY.md`](SECURITY.md) instead of publishing exploit details in a public issue.
+
 ### Suggesting Features
 
 Feature requests are welcome! Please:
@@ -267,7 +269,7 @@ Maintainers handle releases, but contributors should:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the MIT License. Do not submit material you do not have the right to contribute under those terms.
 
 ## Thank You!
 
