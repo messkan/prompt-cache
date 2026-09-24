@@ -159,6 +159,15 @@ func (se *SemanticEngine) AddToIndex(key string, embedding []float32) {
 	metrics.Get().SetStoredVectors(uint64(len(stored)))
 }
 
+// RemoveFromIndex drops a key from the ANN index. It is a no-op when the ANN
+// index is disabled or the key is not indexed.
+func (se *SemanticEngine) RemoveFromIndex(key string) {
+	if se.annIndex == nil {
+		return
+	}
+	se.annIndex.Remove(key)
+}
+
 func NewProvider() (Provider, error) {
 	provider := os.Getenv("EMBEDDING_PROVIDER")
 	if provider == "" {
@@ -272,19 +281,27 @@ func (se *SemanticEngine) FindSimilar(ctx context.Context, text string) (string,
 	var bestSim float32
 
 	if useANN {
-		keys, distances := se.annIndex.Search(queryEmb, 1)
-		if len(keys) > 0 {
+		stored, err := se.Store.GetAllEmbeddings(ctx)
+		for {
+			keys, distances := se.annIndex.Search(queryEmb, 1)
+			if len(keys) == 0 {
+				break
+			}
 			bestKey = keys[0]
 			bestSim = 1.0 - distances[0]
-			embBytes, err := se.Store.GetAllEmbeddings(ctx)
-			if err == nil {
-				if emb, ok := embBytes[bestKey]; ok {
-					bestSim = CosineSimilarity(queryEmb, BytesToFloat32(emb))
-				} else {
-					bestKey = ""
-					bestSim = 0
-				}
+			if err != nil {
+				break
 			}
+			emb, ok := stored[bestKey]
+			if ok {
+				bestSim = CosineSimilarity(queryEmb, BytesToFloat32(emb))
+				break
+			}
+			// The entry was deleted, evicted or expired after it was indexed.
+			// Drop it so it cannot keep shadowing live neighbours.
+			se.annIndex.Remove(bestKey)
+			bestKey = ""
+			bestSim = 0
 		}
 	} else {
 		stored, err := se.Store.GetAllEmbeddings(ctx)
