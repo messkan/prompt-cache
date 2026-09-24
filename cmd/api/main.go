@@ -481,6 +481,7 @@ func main() {
 		}
 		_ = store.Delete(ctx, "emb:"+key)
 		_ = store.Delete(ctx, "prompt:"+key)
+		semanticEngine.RemoveFromIndex("emb:" + key)
 		logging.Info().Str("key", key).Msg("Cache entry deleted")
 		cGin.JSON(http.StatusOK, gin.H{
 			"message": "Cache entry deleted successfully",
