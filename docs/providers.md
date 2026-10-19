@@ -15,6 +15,7 @@ PromptCache supports multiple AI providers for embeddings and semantic verificat
 | OpenAI | text-embedding-3-small | gpt-4o-mini | $0.02 / $0.15 |
 | Mistral AI | mistral-embed | mistral-small-latest | $0.10 / $0.20 |
 | Claude | voyage-3 (Voyage AI) | claude-3-haiku | $0.10 / $0.25 |
+| MiniMax | Separate embedding provider | MiniMax-M3.1-Flash | See MiniMax pricing below |
 
 ---
 
@@ -135,6 +136,54 @@ Get your API keys:
 
 ---
 
+## MiniMax
+
+### Setup
+
+```bash
+export EMBEDDING_PROVIDER=minimax
+export MINIMAX_API_KEY=your-minimax-api-key
+export OPENAI_API_KEY=your-embedding-api-key
+export MINIMAX_VERIFY_MODEL=MiniMax-M3.1-Flash # or MiniMax-M3
+```
+
+Get your API key from: [platform.minimax.io](https://platform.minimax.io/)
+
+### Regional Endpoints
+
+MiniMax provides two regional endpoints. Set `MINIMAX_BASE_URL` to choose the region:
+
+| Region | Base URL |
+|--------|----------|
+| Global (English) | `https://api.minimax.io/v1` (default) |
+| China | `https://api.minimaxi.com/v1` |
+
+```bash
+# Use the China endpoint
+export MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+```
+
+### Models Used
+
+- **Chat and verification**: `MiniMax-M3.1-Flash` (verifier default), `MiniMax-M3`. Set the chat request's `model` explicitly; custom and saved model IDs are forwarded unchanged.
+- **Embeddings**: the existing separate embedding provider, configured with `OPENAI_API_KEY` and `OPENAI_EMBED_MODEL` (default `text-embedding-3-small`). MiniMax chat models are not embedding models. Clear or separate existing caches when changing embedding models.
+
+The verifier requests adaptive thinking for Flash and disabled thinking for M3, with `reasoning_split: true` so it compares the final YES/NO answer independently of reasoning. Custom models retain API thinking defaults. Forwarded chat requests retain caller settings: Flash only supports adaptive thinking and efforts `low`, `medium`, `high`, `xhigh`, `max` (default); disabled thinking, effort `none`, `reasoning_split: false`, and `service_tier` are unsupported. M3 supports adaptive or disabled thinking and ignores effort.
+
+Both chat models support a 1,000,000-token context and up to 524,288 output tokens. The proxy accepts text, image and video content parts; this does not make the separate embedding model multimodal.
+
+### Pricing
+
+Direct API USD per million input/output/cache-read tokens:
+
+- Flash: $0.15 / $0.60 / $0.015.
+- M3 Standard: $0.30 / $1.20 / $0.06 for request input <=512k; $0.60 / $2.40 / $0.12 above 512k. Priority costs 1.5 times these rates. The published threshold is retained as `512k` without assuming an integer expansion.
+- Cache-write pricing is not specified here. Embedding costs are billed separately.
+
+Sources: [API model behavior](https://platform.minimax.io/docs/api-reference/text-chat-openai.md), [pricing](https://platform.minimax.io/docs/pricing/overview.md).
+
+---
+
 ## Comparing Providers
 
 ### Performance
@@ -202,7 +251,7 @@ curl http://localhost:8080/v1/config/provider
 ```json
 {
   "provider": "openai",
-  "available_providers": ["openai", "mistral", "claude"]
+  "available_providers": ["openai", "mistral", "claude", "minimax"]
 }
 ```
 
@@ -295,7 +344,7 @@ else:
 Error: unsupported provider: xxx
 ```
 
-**Solution**: Use `openai`, `mistral`, or `claude` (case-insensitive)
+**Solution**: Use `openai`, `mistral`, `claude`, or `minimax` (case-insensitive)
 
 ### API Key Missing
 

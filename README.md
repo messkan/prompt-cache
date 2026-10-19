@@ -166,6 +166,18 @@ Provider names identify compatibility only. PromptCache is an independent projec
 
 ---
 
+### MiniMax
+
+```bash
+export EMBEDDING_PROVIDER=minimax
+export MINIMAX_API_KEY=your-minimax-key
+export OPENAI_API_KEY=your-embedding-key
+export MINIMAX_VERIFY_MODEL=MiniMax-M3.1-Flash # or MiniMax-M3
+export MINIMAX_BASE_URL=https://api.minimax.io/v1 # or https://api.minimaxi.com/v1
+```
+
+MiniMax handles chat and verification; embeddings use the existing separate embedding provider. Flash verification uses adaptive thinking with reasoning separated from the final answer. See the [provider guide](docs/providers.md#minimax) for model behavior and pricing.
+
 ## Semantic matching configuration
 
 ```bash

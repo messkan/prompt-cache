@@ -14,6 +14,10 @@ services:
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - VOYAGE_API_KEY=${VOYAGE_API_KEY}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
+      - MINIMAX_BASE_URL=${MINIMAX_BASE_URL:-https://api.minimax.io/v1}
+      - MINIMAX_VERIFY_MODEL=${MINIMAX_VERIFY_MODEL:-MiniMax-M3.1-Flash}
+      - OPENAI_EMBED_MODEL=${OPENAI_EMBED_MODEL:-text-embedding-3-small}
       
       # Cache configuration (optional)
       - CACHE_HIGH_THRESHOLD=${CACHE_HIGH_THRESHOLD:-0.70}

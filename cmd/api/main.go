@@ -370,13 +370,13 @@ func main() {
 	protected.GET("/v1/config", func(cGin *gin.Context) {
 		semCfg := semanticEngine.GetConfig()
 		cGin.JSON(http.StatusOK, gin.H{
-			"provider":                   semanticEngine.GetCurrentProvider(),
-			"available_providers":        []string{"openai", "mistral", "claude"},
-			"high_threshold":             semCfg["high_threshold"],
-			"low_threshold":              semCfg["low_threshold"],
-			"enable_gray_zone_verifier":  semCfg["enable_gray_zone_verifier"],
-			"cache_ttl_hours":            cfg.CacheTTL.Hours(),
-			"cache_max_entries":          cfg.MaxEntries,
+			"provider":                  semanticEngine.GetCurrentProvider(),
+			"available_providers":       []string{"openai", "mistral", "claude", "minimax"},
+			"high_threshold":            semCfg["high_threshold"],
+			"low_threshold":             semCfg["low_threshold"],
+			"enable_gray_zone_verifier": semCfg["enable_gray_zone_verifier"],
+			"cache_ttl_hours":           cfg.CacheTTL.Hours(),
+			"cache_max_entries":         cfg.MaxEntries,
 		})
 	})
 
@@ -412,13 +412,13 @@ func main() {
 			Float64("low_threshold", float64(low)).
 			Msg("Config thresholds updated")
 		cGin.JSON(http.StatusOK, gin.H{
-			"provider":                   semanticEngine.GetCurrentProvider(),
-			"available_providers":        []string{"openai", "mistral", "claude"},
-			"high_threshold":             updated["high_threshold"],
-			"low_threshold":              updated["low_threshold"],
-			"enable_gray_zone_verifier":  updated["enable_gray_zone_verifier"],
-			"cache_ttl_hours":            cfg.CacheTTL.Hours(),
-			"cache_max_entries":          cfg.MaxEntries,
+			"provider":                  semanticEngine.GetCurrentProvider(),
+			"available_providers":       []string{"openai", "mistral", "claude", "minimax"},
+			"high_threshold":            updated["high_threshold"],
+			"low_threshold":             updated["low_threshold"],
+			"enable_gray_zone_verifier": updated["enable_gray_zone_verifier"],
+			"cache_ttl_hours":           cfg.CacheTTL.Hours(),
+			"cache_max_entries":         cfg.MaxEntries,
 		})
 	})
 

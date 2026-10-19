@@ -33,13 +33,15 @@ type Config struct {
 	EmbeddingProvider string
 
 	// Model overrides (optional)
-	OpenAIEmbedModel    string
-	OpenAIVerifyModel   string
-	MistralEmbedModel   string
-	MistralVerifyModel  string
-	ClaudeModel         string
-	ClaudeVerifyModel   string
-	VoyageEmbedModel    string
+	OpenAIEmbedModel   string
+	OpenAIVerifyModel  string
+	MistralEmbedModel  string
+	MistralVerifyModel string
+	ClaudeModel        string
+	ClaudeVerifyModel  string
+	VoyageEmbedModel   string
+	MiniMaxBaseURL     string
+	MiniMaxVerifyModel string
 
 	// Auth settings
 	AuthToken string
@@ -83,6 +85,8 @@ func Load() *Config {
 		ClaudeModel:        getEnvOrDefault("CLAUDE_MODEL", "claude-3-opus-20240229"),
 		ClaudeVerifyModel:  getEnvOrDefault("CLAUDE_VERIFY_MODEL", "claude-3-haiku-20240307"),
 		VoyageEmbedModel:   getEnvOrDefault("VOYAGE_EMBED_MODEL", "voyage-3"),
+		MiniMaxBaseURL:     getEnvOrDefault("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
+		MiniMaxVerifyModel: getEnvOrDefault("MINIMAX_VERIFY_MODEL", "MiniMax-M3.1-Flash"),
 	}
 
 	// Ensure high threshold is greater than low threshold
