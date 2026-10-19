@@ -411,26 +411,30 @@ func TestCheckSimilarity_CaseInsensitive(t *testing.T) {
 }
 
 func TestMiniMaxProvider_Embed(t *testing.T) {
-	mockResponse := EmbeddingResponse{
-		Data: []struct {
-			Embedding []float64 `json:"embedding"`
-		}{
-			{Embedding: []float64{0.2, 0.3, 0.4, 0.5}},
-		},
-	}
-
-	jsonBytes, _ := json.Marshal(mockResponse)
-
-	provider := &MiniMaxProvider{
-		apiKey:      "test-key",
-		embedModel:  "MiniMax-M3",
-		verifyModel: "MiniMax-M3",
-		baseURL:     "https://api.minimax.io/v1",
-		client: newMockClient(&http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(bytes.NewReader(jsonBytes)),
-		}),
-	}
+	t.Setenv("OPENAI_API_KEY", "embedding-test-key")
+	t.Setenv("MINIMAX_API_KEY", "chat-test-key")
+	provider := NewMiniMaxProvider()
+	client, transport := newCapturingMockClient(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"embedding":[0.2,0.3,0.4,0.5]}]}`)),
+	})
+	provider.embedder.client = client
+	t.Cleanup(func() {
+		if transport.Request == nil {
+			t.Fatal("expected an embedding request")
+		}
+		if transport.Request.URL.String() != "https://api.openai.com/v1/embeddings" ||
+			transport.Request.Header.Get("Authorization") != "Bearer embedding-test-key" {
+			t.Fatal("embeddings must use the separate provider and credential")
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(transport.Request.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["model"] != "text-embedding-3-small" || body["input"] != "test text" {
+			t.Fatalf("unexpected embedding contract: %#v", body)
+		}
+	})
 
 	embedding, err := provider.Embed(context.Background(), "test text")
 	if err != nil {
@@ -459,7 +463,6 @@ func TestMiniMaxProvider_CheckSimilarity_Match(t *testing.T) {
 
 	provider := &MiniMaxProvider{
 		apiKey:      "test-key",
-		embedModel:  "MiniMax-M3",
 		verifyModel: "MiniMax-M3",
 		baseURL:     "https://api.minimax.io/v1",
 		client: newMockClient(&http.Response{
@@ -494,7 +497,6 @@ func TestMiniMaxProvider_CheckSimilarity_DisablesThinking(t *testing.T) {
 	})
 	provider := &MiniMaxProvider{
 		apiKey:      "test-key",
-		embedModel:  "MiniMax-M3",
 		verifyModel: "MiniMax-M3",
 		baseURL:     "https://api.minimax.io/v1",
 		client:      client,
@@ -532,7 +534,6 @@ func TestMiniMaxProvider_CheckSimilarity_NoMatch(t *testing.T) {
 
 	provider := &MiniMaxProvider{
 		apiKey:      "test-key",
-		embedModel:  "MiniMax-M3",
 		verifyModel: "MiniMax-M3",
 		baseURL:     "https://api.minimax.io/v1",
 		client: newMockClient(&http.Response{
@@ -556,7 +557,6 @@ func TestMiniMaxProvider_ForwardChatCompletion(t *testing.T) {
 
 	provider := &MiniMaxProvider{
 		apiKey:      "test-key",
-		embedModel:  "MiniMax-M3",
 		verifyModel: "MiniMax-M3",
 		baseURL:     "https://api.minimax.io/v1",
 		client: newMockClient(&http.Response{
@@ -582,7 +582,6 @@ func TestMiniMaxProvider_ForwardChatCompletion_LogicalAPIError(t *testing.T) {
 
 	provider := &MiniMaxProvider{
 		apiKey:      "test-key",
-		embedModel:  "MiniMax-M3",
 		verifyModel: "MiniMax-M3",
 		baseURL:     "https://api.minimax.io/v1",
 		client: newMockClient(&http.Response{

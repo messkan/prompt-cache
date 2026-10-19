@@ -37,7 +37,7 @@ type delta struct {
 // pipeSSEAndBuffer reads an OpenAI-compatible SSE stream from r, writes each raw
 // line to w (flushing after every event boundary), and returns a buffered
 // non-streaming chat.completion JSON for caching.
-func pipeSSEAndBuffer(r io.Reader, w http.ResponseWriter) ([]byte, error) {
+func pipeSSEAndBuffer(r io.Reader, w http.ResponseWriter, validators ...func([]byte) error) ([]byte, error) {
 	flusher, canFlush := w.(http.Flusher)
 
 	var (
@@ -71,6 +71,11 @@ func pipeSSEAndBuffer(r io.Reader, w http.ResponseWriter) ([]byte, error) {
 					flusher.Flush()
 				}
 				break
+			}
+			for _, validate := range validators {
+				if err := validate([]byte(data)); err != nil {
+					return nil, err
+				}
 			}
 			var chunk streamingChunk
 			if err := json.Unmarshal([]byte(data), &chunk); err == nil {
@@ -139,7 +144,6 @@ type ProviderConfig struct {
 
 	// MiniMax settings
 	MiniMaxBaseURL     string
-	MiniMaxEmbedModel  string
 	MiniMaxVerifyModel string
 }
 
@@ -157,8 +161,7 @@ func DefaultProviderConfig() *ProviderConfig {
 		ClaudeVerifyModel:  getEnvOrDefault("CLAUDE_VERIFY_MODEL", "claude-3-haiku-20240307"),
 		VoyageEmbedModel:   getEnvOrDefault("VOYAGE_EMBED_MODEL", "voyage-3"),
 		MiniMaxBaseURL:     getEnvOrDefault("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
-		MiniMaxEmbedModel:  getEnvOrDefault("MINIMAX_EMBED_MODEL", "MiniMax-M3"),
-		MiniMaxVerifyModel: getEnvOrDefault("MINIMAX_VERIFY_MODEL", "MiniMax-M3"),
+		MiniMaxVerifyModel: getEnvOrDefault("MINIMAX_VERIFY_MODEL", "MiniMax-M3.1-Flash"),
 	}
 }
 
@@ -1175,7 +1178,7 @@ func (p *ClaudeProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 s
 type MiniMaxProvider struct {
 	apiKey      string
 	client      *internalhttp.RetryableClient
-	embedModel  string
+	embedder    *OpenAIProvider
 	verifyModel string
 	baseURL     string
 }
@@ -1185,6 +1188,17 @@ type miniMaxAPIResponse struct {
 		StatusCode int    `json:"status_code"`
 		StatusMsg  string `json:"status_msg"`
 	} `json:"base_resp"`
+}
+
+func validateMiniMaxResponse(body []byte) error {
+	var response miniMaxAPIResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return err
+	}
+	if response.BaseResp.StatusCode != 0 {
+		return fmt.Errorf("MiniMax API error (%d): %s", response.BaseResp.StatusCode, response.BaseResp.StatusMsg)
+	}
+	return nil
 }
 
 func NewMiniMaxProvider() *MiniMaxProvider {
@@ -1199,66 +1213,18 @@ func NewMiniMaxProviderWithConfig(cfg *ProviderConfig) *MiniMaxProvider {
 			MaxRetries:    cfg.HTTPMaxRetries,
 			RetryBaseWait: cfg.HTTPRetryBaseWait,
 		}),
-		embedModel:  cfg.MiniMaxEmbedModel,
+		embedder:    NewOpenAIProviderWithConfig(cfg),
 		verifyModel: cfg.MiniMaxVerifyModel,
 		baseURL:     cfg.MiniMaxBaseURL,
 	}
 }
 
 func (p *MiniMaxProvider) Embed(ctx context.Context, text string) ([]float32, error) {
-	m := metrics.Get()
-	m.RecordProviderCall()
-
-	reqBody := EmbeddingRequest{
-		Input: text,
-		Model: p.embedModel,
+	// MiniMax's chat models do not expose an embeddings contract.
+	if p.embedder == nil || p.embedder.apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY is required for embeddings with the MiniMax provider")
 	}
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		m.RecordProviderError()
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/embeddings", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		m.RecordProviderError()
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		m.RecordProviderError()
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		m.RecordProviderError()
-		return nil, fmt.Errorf("MiniMax API error (%d): %s", resp.StatusCode, string(body))
-	}
-
-	var embeddingResp EmbeddingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&embeddingResp); err != nil {
-		m.RecordProviderError()
-		return nil, err
-	}
-
-	if len(embeddingResp.Data) == 0 {
-		m.RecordProviderError()
-		return nil, fmt.Errorf("no embedding data returned")
-	}
-
-	// Convert float64 to float32
-	res := make([]float32, len(embeddingResp.Data[0].Embedding))
-	for i, v := range embeddingResp.Data[0].Embedding {
-		res[i] = float32(v)
-	}
-
-	return res, nil
+	return p.embedder.Embed(ctx, text)
 }
 
 func (p *MiniMaxProvider) ForwardChatCompletion(ctx context.Context, requestBody []byte) ([]byte, int, error) {
@@ -1339,9 +1305,20 @@ func (p *MiniMaxProvider) ForwardStreamingChatCompletion(ctx context.Context, re
 		return nil, resp.StatusCode, fmt.Errorf("MiniMax API error (%d): %s", resp.StatusCode, string(body))
 	}
 
+	if strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
+		body, err := io.ReadAll(resp.Body)
+		if err == nil {
+			err = validateMiniMaxResponse(body)
+		}
+		if err == nil {
+			err = fmt.Errorf("expected a MiniMax event stream")
+		}
+		m.RecordProviderError()
+		return nil, http.StatusBadGateway, err
+	}
 	setSSEHeaders(w)
 
-	buffered, err := pipeSSEAndBuffer(resp.Body, w)
+	buffered, err := pipeSSEAndBuffer(resp.Body, w, validateMiniMaxResponse)
 	if err != nil {
 		m.RecordProviderError()
 		return nil, http.StatusOK, err
@@ -1357,14 +1334,24 @@ func (p *MiniMaxProvider) CheckSimilarity(ctx context.Context, prompt1, prompt2 
 	systemPrompt := "You are a semantic judge. Determine if the two user prompts have the exact same intent and meaning. Answer only with 'YES' or 'NO'."
 	userPrompt := fmt.Sprintf("Prompt 1: %s\nPrompt 2: %s", prompt1, prompt2)
 
-	reqBody := VerificationRequest{
+	// Split reasoning from the final YES/NO answer. Flash cannot disable thinking.
+	thinking := map[string]string(nil)
+	if p.verifyModel == "MiniMax-M3.1-Flash" {
+		thinking = map[string]string{"type": "adaptive"}
+	} else if p.verifyModel == "MiniMax-M3" {
+		thinking = map[string]string{"type": "disabled"}
+	}
+	reqBody := struct {
+		VerificationRequest
+		ReasoningSplit bool `json:"reasoning_split"`
+	}{VerificationRequest: VerificationRequest{
 		Model:    p.verifyModel,
-		Thinking: map[string]string{"type": "disabled"},
+		Thinking: thinking,
 		Messages: []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
 		},
-	}
+	}, ReasoningSplit: true}
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {

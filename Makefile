@@ -26,7 +26,8 @@ help:
 	@echo "  MISTRAL_API_KEY   - Mistral API key"
 	@echo "  ANTHROPIC_API_KEY - Anthropic API key"
 	@echo "  VOYAGE_API_KEY    - Voyage AI API key (for Claude)"
-	@echo "  MINIMAX_API_KEY   - MiniMax API key"
+	@echo "  MINIMAX_API_KEY   - MiniMax API key (OPENAI_API_KEY is also required for embeddings)"
+	@echo "  MINIMAX_VERIFY_MODEL - Verifier model (default: MiniMax-M3.1-Flash; also MiniMax-M3)"
 	@echo "  MINIMAX_BASE_URL  - MiniMax API base URL (global: https://api.minimax.io/v1, China: https://api.minimaxi.com/v1)"
 	@echo "  LOG_LEVEL         - Logging level (debug|info|warn|error)"
 

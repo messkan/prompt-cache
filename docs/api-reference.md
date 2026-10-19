@@ -427,7 +427,7 @@ Return the current provider, available providers, similarity thresholds, gray-zo
 ```json
 {
   "provider": "openai",
-  "available_providers": ["openai", "mistral", "claude"],
+  "available_providers": ["openai", "mistral", "claude", "minimax"],
   "high_threshold": 0.70,
   "low_threshold": 0.30,
   "enable_gray_zone_verifier": true,

@@ -41,7 +41,6 @@ type Config struct {
 	ClaudeVerifyModel  string
 	VoyageEmbedModel   string
 	MiniMaxBaseURL     string
-	MiniMaxEmbedModel  string
 	MiniMaxVerifyModel string
 
 	// Auth settings
@@ -87,8 +86,7 @@ func Load() *Config {
 		ClaudeVerifyModel:  getEnvOrDefault("CLAUDE_VERIFY_MODEL", "claude-3-haiku-20240307"),
 		VoyageEmbedModel:   getEnvOrDefault("VOYAGE_EMBED_MODEL", "voyage-3"),
 		MiniMaxBaseURL:     getEnvOrDefault("MINIMAX_BASE_URL", "https://api.minimax.io/v1"),
-		MiniMaxEmbedModel:  getEnvOrDefault("MINIMAX_EMBED_MODEL", "MiniMax-M3"),
-		MiniMaxVerifyModel: getEnvOrDefault("MINIMAX_VERIFY_MODEL", "MiniMax-M3"),
+		MiniMaxVerifyModel: getEnvOrDefault("MINIMAX_VERIFY_MODEL", "MiniMax-M3.1-Flash"),
 	}
 
 	// Ensure high threshold is greater than low threshold
